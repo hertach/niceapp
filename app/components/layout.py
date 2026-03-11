@@ -1,10 +1,10 @@
 # app/components/layout.py
-from contextlib import contextmanager
-from typing import Generator, Callable
+from typing import Callable
 from nicegui import ui, app as nicegui_app
 from app.core.database import get_session
 from app.models.menu_item import MenuItem
 from app.config import APP_TITLE, APP_LOGO
+
 
 COLORS = {
     'sidebar_bg':  '#1e3a5f',
@@ -15,22 +15,28 @@ COLORS = {
     'content_bg':  '#f3f6f9',
 }
 
+# Gemeinsame Basis für aktive/inaktive Nav-Items
+_NAV_ROW_BASE = (
+    'align-items: center; gap: 12px; padding: 10px 20px; '
+    'cursor: pointer; transition: background 0.15s ease; '
+)
+
+
 def _apply_active(row: ui.row) -> None:
     row.style(
-        'align-items: center; gap: 12px; padding: 10px 20px; '
-        'cursor: pointer; transition: background 0.15s ease; '
-        f'background-color: {COLORS["accent"]}; '   # ← blauer Hintergrund
-        'border-left: 3px solid white;'              # ← weisser Balken links
+        _NAV_ROW_BASE +
+        f'background-color: {COLORS["accent"]}; '
+        'border-left: 3px solid white;'
     )
 
 
 def _apply_inactive(row: ui.row) -> None:
     row.style(
-        'align-items: center; gap: 12px; padding: 10px 20px; '
-        'cursor: pointer; transition: background 0.15s ease; '
+        _NAV_ROW_BASE +
         'background-color: transparent; '
         'border-left: 3px solid transparent;'
     )
+
 
 def _load_nav_items(current_role: str) -> list[MenuItem]:
     with get_session() as session:
@@ -75,7 +81,7 @@ def _header() -> None:
 
             def handle_logout() -> None:
                 nicegui_app.storage.user.clear()
-                ui.navigate.to('/login')   # ← Login bleibt eigene Page
+                ui.navigate.to('/login')
 
             ui.button(
                 icon='logout', on_click=handle_logout,
@@ -93,20 +99,16 @@ def _sidebar(navigate: Callable, current_path: str = '/') -> dict[str, ui.row]:
         f'background-color: {COLORS["sidebar_bg"]}; '
         'padding: 8px 0; width: 220px;'
     ):
-        ui.separator().style(
-            'background-color: rgba(255,255,255,0.1); margin: 0;'
-        )
+        ui.separator().style('background-color: rgba(255,255,255,0.1); margin: 0;')
         ui.element('div').style('height: 8px;')
 
         for item in nav_items:
             row = _nav_item(
-                item.label,
-                item.icon,
-                item.path,
+                item.label, item.icon, item.path,
                 navigate,
-                active=(item.path == current_path),  # ← initial aktiv?
+                active=(item.path == current_path),
             )
-            nav_refs[item.path] = row   # ← Referenz speichern
+            nav_refs[item.path] = row
 
     return nav_refs
 
@@ -118,12 +120,12 @@ def _nav_item(
     navigate: Callable,
     active: bool = False,
 ) -> ui.row:
-    row = ui.row().style(
-        'align-items: center; gap: 12px; padding: 10px 20px; '
-        'cursor: pointer; transition: background 0.15s ease; '
-        'border-left: 3px solid transparent;'
-    ).classes('nav-item').on('click', lambda p=path: navigate(p))
-
+    row = (
+        ui.row()
+        .style(_NAV_ROW_BASE + 'border-left: 3px solid transparent;')
+        .classes('nav-item')
+        .on('click', lambda p=path: navigate(p))
+    )
     with row:
         ui.icon(icon).style(f'color: {COLORS["text_muted"]}; font-size: 20px;')
         ui.label(label).style(f'color: {COLORS["text_muted"]}; font-size: 14px;')
@@ -138,12 +140,10 @@ def main_layout(
     navigate: Callable,
     current_path: str = '/',
 ) -> tuple[ui.column, dict[str, ui.row]]:
-
     _header()
     nav_refs = _sidebar(navigate, current_path)
-
-    content = ui.column().style(
+    content  = ui.column().style(
         f'background-color: {COLORS["content_bg"]}; '
         'padding: 24px; width: 100%; min-height: 100vh;'
     )
-    return content, nav_refs   # ← Tuple statt nur content
+    return content, nav_refs
