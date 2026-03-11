@@ -12,6 +12,7 @@ from app.pages.admin.menu_items import menu_items_page
 from app.pages.dashboard import dashboard_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
+from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
 
 PAGES: dict[str, Callable] = {}
 
@@ -109,10 +110,10 @@ def main() -> None:
 
     ui.run(
         title=APP_TITLE,
-        port=8080,
-        reload=True,
+        port=PORT,
+        reload=RELOAD,
         favicon=Path(__file__).parent / 'static' / 'icons' / 'favicon.ico',
-        storage_secret='bitte-aendern-in-production-xyz123',
+        storage_secret=STORAGE_SECRET,
     )
 
 

@@ -72,3 +72,6 @@ venv.bak/
 ### OS spezifisch ###
 .DS_Store
 Thumbs.db
+
+# other
+data/

@@ -1,14 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session
-from pathlib import Path
-
-DB_PATH = Path(__file__).parent.parent.parent / 'data' / 'app.db'
+from app.config import DB_PATH
 
 engine = create_engine(
     f'sqlite:///{DB_PATH}',
     connect_args={'check_same_thread': False},
 )
-
 
 class Base(DeclarativeBase):
     pass
