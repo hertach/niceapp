@@ -1,0 +1,11 @@
+[project]
+name = "niceapp"
+version = "0.1.0"
+description = "NiceApp"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "nicegui>=3.8.0",
+    "sqlalchemy>=2.0.48",
+]

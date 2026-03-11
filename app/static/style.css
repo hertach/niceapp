@@ -1,0 +1,12 @@
+/* Sidebar Navigation oben ausrichten */
+.q-drawer__content {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+}
+
+/* Nav-Item Hover-Effekt */
+.nav-item:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
