@@ -1,8 +1,10 @@
+# app/pages/admin/users.py
 from nicegui import ui
 from app.core.database import get_session
 from app.models.user import User
 from app.core.auth import hash_password
 from app.models.role import Role
+
 
 def users_page() -> None:
 
@@ -16,87 +18,66 @@ def users_page() -> None:
             on_click=lambda: open_dialog(),
         ).props('unelevated').style('background-color: #0078d4; color: white;')
 
-    grid = ui.aggrid({
-        'columnDefs': [
-            {'headerName': 'ID',           'field': 'id',        'width': 70},
-            {'headerName': 'Benutzername', 'field': 'username',  'flex': 1},
-            {'headerName': 'Rolle',        'field': 'role',      'width': 120},
-            {'headerName': 'Aktiv',        'field': 'is_active', 'width': 90},
-            {
-                # Edit-Spalte: eigenes colId, kein sortieren/filtern
-                'colId': 'action_edit',
-                'headerName': '',
-                'field': 'id',
-                'width': 50,
-                'sortable': False,
-                'filter': False,
-                ':cellRenderer': '''(params) => {
-                    const btn = document.createElement("button");
-                    btn.title = "Bearbeiten";
-                    btn.style.cssText = "border:none;background:none;cursor:pointer;padding:2px;";
-                    btn.innerHTML = "<span class=\'material-icons\' style=\'font-size:18px;color:#0078d4;vertical-align:middle\'>edit</span>";
-                    return btn;
-                }'''
-            },
-            {
-                # Delete-Spalte
-                'colId': 'action_delete',
-                'headerName': '',
-                'field': 'id',
-                'width': 50,
-                'sortable': False,
-                'filter': False,
-                ':cellRenderer': '''(params) => {
-                    const btn = document.createElement("button");
-                    btn.title = "Löschen";
-                    btn.style.cssText = "border:none;background:none;cursor:pointer;padding:2px;";
-                    btn.innerHTML = "<span class=\'material-icons\' style=\'font-size:18px;color:#d32f2f;vertical-align:middle\'>delete</span>";
-                    return btn;
-                }'''
-            },
-        ],
-        'rowData': [],
-        'rowSelection': 'none',
-        'suppressRowClickSelection': True,
-    }).style('height: 400px; width: 100%;')
-
-    # ── cellClicked: nur colId + rowData (unsere einfachen Werte) ──
-    def on_cell_clicked(e) -> None:
-        col_id  = e.args.get('colId', '')
-        data    = e.args.get('data', {})
-        user_id = data.get('id')
-        username = data.get('username', '')
-
-        if col_id == 'action_edit':
-            open_dialog(user_id)
-        elif col_id == 'action_delete':
-            confirm_delete(user_id, username)
-
-    grid.on('cellClicked', on_cell_clicked)
-
     # ── Daten laden ──────────────────────────────────────────
-    def load_users() -> None:
+    def get_user_data() -> list[dict]:
         with get_session() as session:
             users = session.query(User).all()
-            row_data = [
+            return [
                 {
-                    'id': u.id,
-                    'username': u.username,
-                    'role': u.role,
+                    'id':        u.id,
+                    'username':  u.username,
+                    'role':      u.role,
                     'is_active': '✅' if u.is_active else '❌',
                 }
                 for u in users
             ]
-        # Direkt via AG Grid API setzen statt grid.update()
-        grid.run_grid_method('setGridOption', 'rowData', row_data)
+
+    # ── Tabelle ──────────────────────────────────────────────
+    table = ui.table(
+        columns=[
+            {'name': 'id',        'label': 'ID',           'field': 'id',        'align': 'left', 'sortable': True},
+            {'name': 'username',  'label': 'Benutzername', 'field': 'username',  'align': 'left', 'sortable': True},
+            {'name': 'role',      'label': 'Rolle',        'field': 'role',      'align': 'left', 'sortable': True},
+            {'name': 'is_active', 'label': 'Aktiv',        'field': 'is_active', 'align': 'left'},
+            {'name': 'actions',   'label': 'Aktionen',     'field': 'actions',   'align': 'left'},
+        ],
+        rows=get_user_data(),
+        row_key='id',
+    ).style('width: 100%;')
+
+    # ── Edit/Delete Buttons via Quasar Slot ──────────────────
+    table.add_slot('body-cell-actions', '''
+        <q-td :props="props">
+            <q-btn flat round
+                icon="edit"
+                color="primary"
+                size="sm"
+                @click="$parent.$emit('edit', props.row)"
+            />
+            <q-btn flat round
+                icon="delete"
+                color="negative"
+                size="sm"
+                @click="$parent.$emit('delete', props.row)"
+            />
+        </q-td>
+    ''')
+
+    table.on('edit',   lambda e: open_dialog(e.args['id']))
+    table.on('delete', lambda e: confirm_delete(e.args['id'], e.args['username']))
+
+    def load_users() -> None:
+        table.rows = get_user_data()
+        table.update()
 
     # ── Edit-Dialog ──────────────────────────────────────────
     dialog = ui.dialog()
 
     def open_dialog(user_id: int | None = None) -> None:
         dialog.clear()
+
         with get_session() as session:
-            all_roles = session.query(Role).order_by(Role.name).all()
+            all_roles    = session.query(Role).order_by(Role.name).all()
             role_options = [r.name for r in all_roles]
 
         with dialog, ui.card().style('width: 400px; padding: 32px;'):
@@ -123,7 +104,7 @@ def users_page() -> None:
 
             role_select = ui.select(
                 label='Rolle',
-                options=role_options,  # ← aus DB ✅
+                options=role_options,
                 value=existing.role if existing else role_options[0],
             ).style('width: 100%; margin-top: 12px;')
 
@@ -142,7 +123,7 @@ def users_page() -> None:
                     return
                 with get_session() as session:
                     if user_id:
-                        user = session.get(User, user_id)
+                        user           = session.get(User, user_id)
                         user.username  = username_input.value
                         user.role      = role_select.value
                         user.is_active = active_toggle.value
@@ -153,10 +134,10 @@ def users_page() -> None:
                             error.set_text('Passwort ist erforderlich.')
                             return
                         session.add(User(
-                            username=username_input.value,
-                            password=hash_password(password_input.value),
-                            role=role_select.value,
-                            is_active=active_toggle.value,
+                            username  = username_input.value,
+                            password  = hash_password(password_input.value),
+                            role      = role_select.value,
+                            is_active = active_toggle.value,
                         ))
                     session.commit()
 
@@ -164,7 +145,9 @@ def users_page() -> None:
                 dialog.close()
                 load_users()
 
-            with ui.row().style('margin-top: 24px; gap: 8px; justify-content: flex-end;'):
+            with ui.row().style(
+                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
+            ):
                 ui.button('Abbrechen', on_click=dialog.close).props('flat')
                 ui.button('Speichern', on_click=save).props('unelevated').style(
                     'background-color: #0078d4; color: white;'
@@ -173,7 +156,9 @@ def users_page() -> None:
 
     # ── Delete-Dialog ────────────────────────────────────────
     def confirm_delete(user_id: int, username: str) -> None:
-        with ui.dialog() as confirm_dialog, ui.card().style('padding: 32px; width: 360px;'):
+        with ui.dialog() as confirm_dialog, ui.card().style(
+            'padding: 32px; width: 360px;'
+        ):
             ui.label('Benutzer löschen').style(
                 'font-size: 18px; font-weight: 600; color: #1e3a5f;'
             )
@@ -194,11 +179,13 @@ def users_page() -> None:
                 ui.notify(f'"{username}" gelöscht.', type='warning')
                 load_users()
 
-            with ui.row().style('margin-top: 24px; gap: 8px; justify-content: flex-end;'):
+            with ui.row().style(
+                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
+            ):
                 ui.button('Abbrechen', on_click=confirm_dialog.close).props('flat')
                 ui.button(
                     'Löschen', icon='delete', on_click=do_delete,
-                ).props('unelevated').style('background-color: #d32f2f; color: white;')
+                ).props('unelevated').style(
+                    'background-color: #d32f2f; color: white;'
+                )
         confirm_dialog.open()
-
-    load_users()

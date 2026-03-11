@@ -16,67 +16,11 @@ def roles_page() -> None:
             on_click=lambda: open_dialog(),
         ).props('unelevated').style('background-color: #0078d4; color: white;')
 
-    # ── AG Grid ─────────────────────────────────────────────
-    grid = ui.aggrid({
-        'columnDefs': [
-            {'headerName': 'ID',          'field': 'id',          'width': 70},
-            {'headerName': 'Name',        'field': 'name',        'width': 150},
-            {'headerName': 'Beschreibung','field': 'description', 'flex': 1},
-            {
-                'colId': 'action_edit',
-                'headerName': '',
-                'field': 'id',
-                'width': 50,
-                'sortable': False,
-                'filter': False,
-                ':cellRenderer': '''(params) => {
-                    const btn = document.createElement("button");
-                    btn.title = "Bearbeiten";
-                    btn.style.cssText = "border:none;background:none;cursor:pointer;padding:2px;";
-                    btn.innerHTML = "<span class=\'material-icons\' style=\'font-size:18px;color:#0078d4;vertical-align:middle\'>edit</span>";
-                    return btn;
-                }'''
-            },
-            {
-                'colId': 'action_delete',
-                'headerName': '',
-                'field': 'id',
-                'width': 50,
-                'sortable': False,
-                'filter': False,
-                ':cellRenderer': '''(params) => {
-                    const btn = document.createElement("button");
-                    btn.title = "Löschen";
-                    btn.style.cssText = "border:none;background:none;cursor:pointer;padding:2px;";
-                    btn.innerHTML = "<span class=\'material-icons\' style=\'font-size:18px;color:#d32f2f;vertical-align:middle\'>delete</span>";
-                    return btn;
-                }'''
-            },
-        ],
-        'rowData': [],
-        'rowSelection': 'none',
-        'suppressRowClickSelection': True,
-    }).style('height: 400px; width: 100%;')
-
-    # ── cellClicked ──────────────────────────────────────────
-    def on_cell_clicked(e) -> None:
-        col_id  = e.args.get('colId', '')
-        data    = e.args.get('data', {})
-        role_id = data.get('id')
-        name    = data.get('name', '')
-
-        if col_id == 'action_edit':
-            open_dialog(role_id)
-        elif col_id == 'action_delete':
-            confirm_delete(role_id, name)
-
-    grid.on('cellClicked', on_cell_clicked)
-
     # ── Daten laden ──────────────────────────────────────────
-    def load_roles() -> None:
+    def get_role_data() -> list[dict]:
         with get_session() as session:
             roles = session.query(Role).all()
-            row_data = [
+            return [
                 {
                     'id':          r.id,
                     'name':        r.name,
@@ -84,7 +28,42 @@ def roles_page() -> None:
                 }
                 for r in roles
             ]
-        grid.run_grid_method('setGridOption', 'rowData', row_data)
+
+    # ── Tabelle ──────────────────────────────────────────────
+    table = ui.table(
+        columns=[
+            {'name': 'id',          'label': 'ID',           'field': 'id',          'align': 'left', 'sortable': True},
+            {'name': 'name',        'label': 'Name',         'field': 'name',        'align': 'left', 'sortable': True},
+            {'name': 'description', 'label': 'Beschreibung', 'field': 'description', 'align': 'left'},
+            {'name': 'actions',     'label': 'Aktionen',     'field': 'actions',     'align': 'left'},
+        ],
+        rows=get_role_data(),
+        row_key='id',
+    ).style('width: 100%;')
+
+    table.add_slot('body-cell-actions', '''
+        <q-td :props="props">
+            <q-btn flat round
+                icon="edit"
+                color="primary"
+                size="sm"
+                @click="$parent.$emit('edit', props.row)"
+            />
+            <q-btn flat round
+                icon="delete"
+                color="negative"
+                size="sm"
+                @click="$parent.$emit('delete', props.row)"
+            />
+        </q-td>
+    ''')
+
+    table.on('edit',   lambda e: open_dialog(e.args['id']))
+    table.on('delete', lambda e: confirm_delete(e.args['id'], e.args['name']))
+
+    def load_roles() -> None:
+        table.rows = get_role_data()
+        table.update()
 
     # ── Edit-Dialog ──────────────────────────────────────────
     dialog = ui.dialog()
@@ -122,24 +101,21 @@ def roles_page() -> None:
                 if not name_input.value:
                     error.set_text('Rollenname darf nicht leer sein.')
                     return
-
                 with get_session() as session:
-                    # Duplikat prüfen
                     duplicate = session.query(Role).filter_by(
                         name=name_input.value
                     ).first()
                     if duplicate and duplicate.id != role_id:
                         error.set_text(f'Rolle "{name_input.value}" existiert bereits.')
                         return
-
                     if role_id:
-                        role = session.get(Role, role_id)
+                        role             = session.get(Role, role_id)
                         role.name        = name_input.value
                         role.description = desc_input.value
                     else:
                         session.add(Role(
-                            name=name_input.value,
-                            description=desc_input.value,
+                            name        = name_input.value,
+                            description = desc_input.value,
                         ))
                     session.commit()
 
@@ -158,7 +134,6 @@ def roles_page() -> None:
 
     # ── Delete-Dialog ────────────────────────────────────────
     def confirm_delete(role_id: int, name: str) -> None:
-        # Standard-Rollen schützen
         if name in ('admin', 'user'):
             ui.notify(
                 f'Standard-Rolle "{name}" kann nicht gelöscht werden.',
@@ -199,5 +174,3 @@ def roles_page() -> None:
                     'background-color: #d32f2f; color: white;'
                 )
         confirm_dialog.open()
-
-    load_roles()
