@@ -1,7 +1,7 @@
 # app/main.py
 from pathlib import Path
 from nicegui import ui, app as nicegui_app
-from app.components.layout import main_layout
+from nicegui.functions import navigate
 from app.config import APP_TITLE
 from app.pages.login import login_page
 from app.core.database import init_db, get_session
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.pages.admin.users import users_page
 from app.pages.admin.roles import roles_page
 from app.pages.admin.menu_items import menu_items_page
+from app.pages.dashboard import dashboard_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 
@@ -25,11 +26,7 @@ def page(path: str) -> Callable:
 # Seiten registrieren – einmal dekorieren, fertig
 @page('/')
 def _dashboard() -> None:
-    username = nicegui_app.storage.user.get('username', '')
-    ui.label('Dashboard').style(
-        'font-size: 24px; font-weight: 600; color: #1e3a5f;'
-    )
-    ui.label(f'Willkommen, {username}').style('color: #666;')
+    dashboard_page(navigate)
 
 @page('/admin/users')
 def _admin_users() -> None:
@@ -121,7 +118,7 @@ def main() -> None:
         title=APP_TITLE,
         port=8080,
         reload=True,
-        favicon='/static/icons/favicon.ico',
+        favicon=Path(__file__).parent / 'static' / 'icons' / 'favicon.ico',
         storage_secret='bitte-aendern-in-production-xyz123',
     )
 
