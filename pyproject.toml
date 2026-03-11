@@ -5,6 +5,7 @@ description = "NiceApp"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.18.4",
     "bcrypt>=5.0.0",
     "nicegui>=3.8.0",
     "python-dotenv>=1.2.2",
