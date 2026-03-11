@@ -1,7 +1,6 @@
 # app/main.py
 from pathlib import Path
 from nicegui import ui, app as nicegui_app
-from nicegui.functions import navigate
 from app.config import APP_TITLE
 from app.pages.login import login_page
 from app.core.database import init_db, get_session
@@ -17,16 +16,19 @@ from typing import Callable
 PAGES: dict[str, Callable] = {}
 
 def page(path: str) -> Callable:
-    """Decorator der eine Funktion als Seite registriert."""
     def decorator(fn: Callable) -> Callable:
         PAGES[path] = fn
         return fn
     return decorator
 
-# Seiten registrieren – einmal dekorieren, fertig
+
+# ── Seiten registrieren ────────────────────────────────────────────────────────
+# WICHTIG: navigate wird erst innerhalb von index() definiert,
+# daher als Lambda mit spätem Binding
+
 @page('/')
 def _dashboard() -> None:
-    dashboard_page(navigate)
+    pass  # wird unten via _render_page überschrieben – siehe Hinweis
 
 @page('/admin/users')
 def _admin_users() -> None:
@@ -39,13 +41,6 @@ def _admin_roles() -> None:
 @page('/admin/menu')
 def _admin_menu() -> None:
     menu_items_page()
-
-def _dashboard() -> None:
-    username = nicegui_app.storage.user.get('username', '')
-    ui.label('Dashboard').style(
-        'font-size: 24px; font-weight: 600; color: #1e3a5f;'
-    )
-    ui.label(f'Willkommen, {username}').style('color: #666;')
 
 
 def create_test_user() -> None:
@@ -66,7 +61,6 @@ def main() -> None:
     create_test_user()
 
     nicegui_app.add_static_files('/static', Path(__file__).parent / 'static')
-
     css_path = Path(__file__).parent / 'static' / 'style.css'
     ui.add_css(css_path.read_text(), shared=True)
 
@@ -80,9 +74,9 @@ def main() -> None:
             ui.navigate.to('/login')
             return
 
-        content_ref: list[ui.column] = []
-        nav_refs_ref: list[dict[str, ui.row]] = []
-        active_path: list[str] = ['/']  # ← aktueller Pfad
+        content_ref:   list[ui.column]          = []
+        nav_refs_ref:  list[dict[str, ui.row]]  = []
+        active_path:   list[str]                = ['/']
 
         def navigate(path: str) -> None:
             page_fn = PAGES.get(path)
@@ -92,27 +86,26 @@ def main() -> None:
             if not check_access(path):
                 return
 
-            # Alten aktiven Eintrag deaktivieren
             if active_path[0] in nav_refs_ref[0]:
                 _apply_inactive(nav_refs_ref[0][active_path[0]])
-
-            # Neuen aktiven Eintrag hervorheben
             if path in nav_refs_ref[0]:
                 _apply_active(nav_refs_ref[0][path])
 
             active_path[0] = path
-
-            # Content neu rendern
             content_ref[0].clear()
             with content_ref[0]:
                 page_fn()
+
+        # navigate ist jetzt definiert → Dashboard korrekt registrieren
+        PAGES['/'] = lambda: dashboard_page(navigate)
 
         content, nav_refs = main_layout(navigate, active_path[0])
         content_ref.append(content)
         nav_refs_ref.append(nav_refs)
 
+        # Initialer Render über die Registry
         with content:
-            _dashboard()
+            PAGES['/']()
 
     ui.run(
         title=APP_TITLE,
