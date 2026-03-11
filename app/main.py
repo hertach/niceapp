@@ -10,6 +10,7 @@ from app.pages.admin.users import users_page
 from app.pages.admin.roles import roles_page
 from app.pages.admin.menu_items import menu_items_page
 from app.pages.dashboard import dashboard_page
+from app.pages.patients import patients_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
@@ -43,6 +44,9 @@ def _admin_roles() -> None:
 def _admin_menu() -> None:
     menu_items_page()
 
+@page('/patients')
+def _patients() -> None:
+    patients_page()
 
 def create_test_user() -> None:
     with get_session() as session:
