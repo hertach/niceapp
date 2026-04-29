@@ -3,6 +3,7 @@ from datetime import date
 from nicegui import ui
 from app.core.database import get_session
 from app.models.patient import Patient
+from app.components.inputs import date_input
 
 
 _GENDER_OPTIONS = {'': '—', 'm': 'Männlich', 'f': 'Weiblich', 'divers': 'Divers'}
@@ -77,11 +78,10 @@ def patients_page() -> None:
                 ).style('flex: 1;')
 
             with ui.row().style('gap: 12px; width: 100%; margin-top: 8px;'):
-                dob_input = ui.input(
-                    label='Geburtsdatum (TT.MM.JJJJ)',
-                    value=existing.date_of_birth.strftime('%d.%m.%Y') if existing and existing.date_of_birth else '',
-                    placeholder='z.B. 15.03.1985',
-                ).style('flex: 1;')
+                dob_input = date_input(
+                    label='Geburtsdatum',
+                    value=existing.date_of_birth.strftime('%d.%m.%Y') if existing and existing.date_of_birth else ''
+                )
                 gender_select = ui.select(
                     label='Geschlecht',
                     options=_GENDER_OPTIONS,
