@@ -9,6 +9,7 @@ from app.config import APP_TITLE, APP_LOGO
 COLORS = {
     'sidebar_bg':  '#1e3a5f',
     'header_bg':   '#0f2744',
+    'app_title':   '#b2945d',
     'accent':      '#0078d4',
     'text_light':  '#ffffff',
     'text_muted':  '#c7d8ec',
@@ -60,7 +61,7 @@ def _header() -> None:
         with ui.row().style('align-items: center; gap: 10px;'):
             ui.image(APP_LOGO).style('height: 28px; width: 28px;')
             ui.label(APP_TITLE).style(
-                f'color: {COLORS["text_light"]}; '
+                f'color: {COLORS["app_title"]}; '
                 'font-size: 18px; font-weight: 600; letter-spacing: 0.5px;'
             )
 
