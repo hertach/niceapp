@@ -11,6 +11,8 @@ from app.pages.admin.settings import settings_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
+from app.models.log_entry import init_log_db
+from app.core.logger import app_logger
 
 PAGES: dict[str, Callable] = {}
 
@@ -52,8 +54,10 @@ def create_test_user() -> None:
 
 def main() -> None:
     init_db()
+    init_log_db()
     create_test_user()
-
+    app_logger.info("Anwendung und Log-Datenbank gestartet.")
+    
     nicegui_app.add_static_files('/static', Path(__file__).parent / 'static')
     css_path = Path(__file__).parent / 'static' / 'style.css'
     ui.add_css(css_path.read_text(), shared=True)

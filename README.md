@@ -203,7 +203,24 @@ alembic upgrade head
 # App im Dev-Modus (RELOAD=true in .env)
 uv run python main.py
 ```
+## 📝 Logging System
 
+Die Applikation verfügt über ein professionelles, in das Frontend integriertes Logging-System. Um die Performance und Wartbarkeit der Anwendung zu optimieren, werden die Logs physisch von der Hauptdatenbank getrennt.
+
+### ✨ Features
+* **Isolierte Datenbank (`data/log.db`):** System-Logs werden in einer eigenen SQLite-Datenbank gespeichert. Das verhindert Database-Locking bei Schreiboperationen in der Hauptdatenbank (`app.db`) und hält regelmäßige Backups der Nutzerdaten schlank.
+* **Wartungsfrei (Kein Alembic):** Die Log-Datenbank nutzt eine eigenständige SQLAlchemy-Engine. Sie wird beim App-Start automatisch erstellt und benötigt keine Alembic-Migrationen.
+* **Admin-Dashboard:** Ein integrierter Tab in den Einstellungen ermöglicht das Filtern der Logs nach Level (`INFO`, `WARNING`, `ERROR`) sowie eine Volltextsuche in Echtzeit über die NiceGUI-Oberfläche.
+
+### 🚀 Verwendung im Code
+Der globale Logger fängt standardmäßig alle wichtigen Ereignisse ab und speichert sie sowohl in der Datenbank als auch im Konsolen-Output.
+```python
+from app.core.logger import app_logger
+
+# Beispiele für Log-Einträge
+app_logger.info("Anwendung erfolgreich gestartet.")
+app_logger.warning("Unbekannter Login-Versuch.")
+app_logger.error("Datenbankverbindung fehlgeschlagen!")
 ---
 
 ## Roadmap
