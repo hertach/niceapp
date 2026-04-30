@@ -41,9 +41,7 @@ def _seed_menu_items() -> None:
     defaults = [
         MenuItem(label='Dashboard', icon='dashboard', path='/',             roles='',      sort_order=0),
         MenuItem(label='Patienten', icon='people', path='/patients', roles='', sort_order=10),
-        MenuItem(label='Benutzer',  icon='people',    path='/admin/users',  roles='admin', sort_order=97),
-        MenuItem(label='Rollen',    icon='shield',    path='/admin/roles',  roles='admin', sort_order=98),
-        MenuItem(label='Menü', icon='menu', path='/admin/menu', roles='admin', sort_order=99),
+        MenuItem(label='Einstellungen',  icon='settings',    path='/settings',  roles='admin', sort_order=97)
     ]
 
     with Session(engine) as session:

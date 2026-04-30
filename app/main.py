@@ -1,7 +1,6 @@
 # app/main.py
 from pathlib import Path
 from nicegui import ui, app as nicegui_app
-from app.config import APP_TITLE
 from app.pages.login import login_page
 from app.core.database import init_db, get_session
 from app.core.auth import hash_password, check_access
@@ -11,6 +10,7 @@ from app.pages.admin.roles import roles_page
 from app.pages.admin.menu_items import menu_items_page
 from app.pages.dashboard import dashboard_page
 from app.pages.patients import patients_page
+from app.pages.settings import settings_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
@@ -31,6 +31,10 @@ def page(path: str) -> Callable:
 @page('/')
 def _dashboard() -> None:
     pass  # wird unten via _render_page überschrieben – siehe Hinweis
+
+@page('/settings')
+def _settings()-> None:
+    settings_page()
 
 @page('/admin/users')
 def _admin_users() -> None:
