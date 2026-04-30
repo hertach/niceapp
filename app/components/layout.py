@@ -70,10 +70,10 @@ def _header() -> None:
             role     = nicegui_app.storage.user.get('role', '')
 
             ui.icon('account_circle').style(
-                f'color: {COLORS["text_muted"]}; font-size: 24px;'
+                f'color: {COLORS["app_title"]}; font-size: 24px;'
             )
             ui.label(f'{username} ({role})').style(
-                f'color: {COLORS["text_muted"]}; font-size: 13px;'
+                f'color: {COLORS["app_title"]}; font-size: 13px;'
             )
             ui.separator().style(
                 'width: 1px; height: 24px; '
@@ -86,8 +86,8 @@ def _header() -> None:
 
             ui.button(
                 icon='logout', on_click=handle_logout,
-            ).props('flat round').style(
-                f'color: {COLORS["text_muted"]};'
+            ).props(f'flat round text-color={COLORS["app_title"]}').style(
+                f'color: {COLORS["app_title"]};'
             ).tooltip('Abmelden')
 
 
