@@ -54,15 +54,15 @@ def patients_page() -> None:
 
         title = 'Neuer Patient' if not existing else f'{existing.first_name} {existing.last_name} bearbeiten'
 
-        with dialog, ui.card().style('width: 680px; padding: 32px;'):
+        with dialog, ui.card().style('width: 680px; padding: 24px;'):
             ui.label(title).style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f; margin-bottom: 20px;'
+                'font-size: 18px; font-weight: 600; color: #1e3a5f;'
             )
 
             def _section(label: str) -> None:
                 ui.label(label).style(
                     'font-size: 13px; font-weight: 600; color: #0078d4; '
-                    'text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;'
+                    'text-transform: uppercase; letter-spacing: .05em;'
                 )
 
             # Personalien
@@ -77,7 +77,7 @@ def patients_page() -> None:
                     value=existing.last_name if existing else '',
                 ).style('flex: 1;')
 
-            with ui.row().style('gap: 12px; width: 100%; margin-top: 8px;'):
+            with ui.row().style('gap: 12px; width: 100%;'):
                 dob_input = date_input(
                     label='Geburtsdatum',
                     value=existing.date_of_birth.strftime('%d.%m.%Y') if existing and existing.date_of_birth else ''
@@ -88,7 +88,8 @@ def patients_page() -> None:
                     value=existing.gender if existing else '',
                 ).style('flex: 1;')
 
-            ui.separator().style('margin: 16px 0 8px;')
+            #ui.separator().style('margin: 16px 0 8px;')
+            ui.separator()
 
             # Kontakt
             _section('Kontakt')
@@ -104,7 +105,8 @@ def patients_page() -> None:
                     placeholder='name@beispiel.ch',
                 ).style('flex: 1;')
 
-            ui.separator().style('margin: 16px 0 8px;')
+            #ui.separator().style('margin: 16px 0 8px;')
+            ui.separator()
 
             # Adresse
             _section('Adresse')
@@ -112,7 +114,7 @@ def patients_page() -> None:
                 label='Strasse & Hausnummer',
                 value=existing.street if existing else '',
             ).style('width: 100%;')
-            with ui.row().style('gap: 12px; width: 100%; margin-top: 8px;'):
+            with ui.row().style('gap: 12px; width: 100%;'):
                 postal_code_input = ui.input(
                     label='PLZ',
                     value=existing.postal_code if existing else '',
@@ -122,7 +124,8 @@ def patients_page() -> None:
                     value=existing.city if existing else '',
                 ).style('flex: 1;')
 
-            ui.separator().style('margin: 16px 0 8px;')
+            # ui.separator().style('margin: 16px 0 8px;')
+            ui.separator()
 
             # Versicherung
             _section('Versicherung')
@@ -137,19 +140,23 @@ def patients_page() -> None:
                     value=existing.insurance_number if existing else '',
                 ).style('flex: 1;')
 
-            ui.separator().style('margin: 16px 0 8px;')
+            # ui.separator().style('margin: 16px 0 8px;')
+            ui.separator()
 
             # Notizen
             _section('Interne Notizen')
-            notes_input = ui.textarea(
-                label='Notizen',
-                value=existing.notes if existing else '',
-            ).style('width: 100%; min-height: 80px;')
+            with ui.row().style('gap: 12px; width: 100%;'):
+                notes_input = ui.textarea(
+                    label='Notizen',
+                    value=existing.notes if existing else '',
+                ).style('width: 100%; min-height: 80px;')
 
-            is_active_toggle = ui.switch(
-                'Patient aktiv',
-                value=existing.is_active if existing else True,
-            ).style('margin-top: 12px;')
+            with ui.row().style('gap: 12px; width: 100%; '):
+                is_active_toggle = ui.switch(
+                    'Patient aktiv',
+                    value=existing.is_active if existing else True,
+                #).style('margin-top: 12px;')
+                )
 
             error = ui.label('').style(
                 'color: #d32f2f; font-size: 12px; min-height: 18px; margin-top: 8px;'
@@ -194,7 +201,7 @@ def patients_page() -> None:
                 dialog.close()
                 load_patients()
 
-            with ui.row().style('margin-top: 24px; gap: 8px; justify-content: flex-end;'):
+            with ui.row().style('gap: 8px; justify-content: flex-end;'):
                 ui.button('Abbrechen', on_click=dialog.close).props('flat')
                 ui.button('Speichern', on_click=save).props('unelevated').style(
                     'background-color: #0078d4; color: white;'
