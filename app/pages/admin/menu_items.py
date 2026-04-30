@@ -7,15 +7,15 @@ from app.models.role import Role
 
 def menu_items_page() -> None:
 
-    ui.label('Menüverwaltung').style(
-        'font-size: 24px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+    ui.label('Menüverwaltung').classes(
+        'text-[24px] font-semibold text-[#1e3a5f] mb-4'
     )
 
-    with ui.row().style('margin-bottom: 16px;'):
+    with ui.row().classes('mb-4'):
         ui.button(
             'Neuer Menüpunkt', icon='add',
             on_click=lambda: open_dialog(),
-        ).props('unelevated').style('background-color: #0078d4; color: white;')
+        ).props('unelevated').classes('bg-[#0078d4] text-white')
 
     # ── Daten laden ──────────────────────────────────────────
     def get_menu_data() -> list[dict]:
@@ -50,7 +50,7 @@ def menu_items_page() -> None:
         ],
         rows=get_menu_data(),
         row_key='id',
-    ).style('width: 100%;')
+    ).classes('w-full')
 
     table.add_slot('body-cell-actions', '''
         <q-td :props="props">
@@ -86,10 +86,10 @@ def menu_items_page() -> None:
             all_roles  = session.query(Role).order_by(Role.name).all()
             role_names = [r.name for r in all_roles]
 
-        with dialog, ui.card().style('width: 440px; padding: 32px;'):
+        with dialog, ui.card().classes('w-[440px] p-8'):
             title = 'Neuer Menüpunkt' if item_id is None else 'Menüpunkt bearbeiten'
-            ui.label(title).style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+            ui.label(title).classes(
+                'text-[18px] font-semibold text-[#1e3a5f] mb-4'
             )
 
             existing: MenuItem | None = None
@@ -101,19 +101,19 @@ def menu_items_page() -> None:
                 label='Label',
                 value=existing.label if existing else '',
                 placeholder='z.B. Berichte',
-            ).style('width: 100%;')
+            ).classes('w-full')
 
             icon_input = ui.input(
                 label='Icon (Material Icon Name | fonts.google.com/icons)',
                 value=existing.icon if existing else '',
                 placeholder='z.B. bar_chart',
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
-            with ui.row().style('align-items: center; gap: 8px; margin-top: 4px;'):
-                ui.label('Vorschau: ').style('font-size: 12px; color: #666;')
+            with ui.row().classes('items-center gap-2 mt-1'):
+                ui.label('Vorschau: ').classes('text-[12px] text-[#666]')
                 preview_icon = ui.icon(
                     existing.icon if existing else 'help_outline'
-                ).style('color: #1e3a5f; font-size: 24px;')
+                ).classes('text-[#1e3a5f] text-[24px]')
 
             icon_input.on(
                 'input',
@@ -124,25 +124,25 @@ def menu_items_page() -> None:
                 label='Pfad',
                 value=existing.path if existing else '',
                 placeholder='z.B. /reports',
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
             sort_input = ui.number(
                 label='Reihenfolge',
                 value=existing.sort_order if existing else 0,
                 min=0, max=999, step=1,
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
-            ui.label('Sichtbar für Rollen:').style(
-                'margin-top: 16px; font-size: 13px; font-weight: 600; color: #1e3a5f;'
+            ui.label('Sichtbar für Rollen:').classes(
+                'mt-4 text-[13px] font-semibold text-[#1e3a5f]'
             )
-            ui.label('(Keine Auswahl = für alle sichtbar)').style(
-                'font-size: 11px; color: #999; margin-bottom: 4px;'
+            ui.label('(Keine Auswahl = für alle sichtbar)').classes(
+                'text-[11px] text-[#999] mb-1'
             )
 
             existing_roles = existing.roles_list() if existing else []
             role_checkboxes: dict[str, ui.checkbox] = {}
 
-            with ui.row().style('gap: 16px; flex-wrap: wrap;'):
+            with ui.row().classes('gap-4 flex-wrap'):
                 for role_name in role_names:
                     cb = ui.checkbox(
                         role_name,
@@ -150,8 +150,8 @@ def menu_items_page() -> None:
                     )
                     role_checkboxes[role_name] = cb
 
-            error = ui.label('').style(
-                'color: #d32f2f; font-size: 12px; min-height: 18px; margin-top: 8px;'
+            error = ui.label('').classes(
+                'text-[#d32f2f] text-[12px] min-h-[18px] mt-2'
             )
 
             def save() -> None:
@@ -188,25 +188,21 @@ def menu_items_page() -> None:
                 dialog.close()
                 load_items()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=dialog.close).props('flat')
-                ui.button('Speichern', on_click=save).props('unelevated').style(
-                    'background-color: #0078d4; color: white;'
+                ui.button('Speichern', on_click=save).props('unelevated').classes(
+                    'bg-[#0078d4] text-white'
                 )
         dialog.open()
 
     # ── Delete-Dialog ────────────────────────────────────────
     def confirm_delete(item_id: int, label: str) -> None:
-        with ui.dialog() as confirm_dialog, ui.card().style(
-            'padding: 32px; width: 360px;'
-        ):
-            ui.label('Menüpunkt löschen').style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f;'
+        with ui.dialog() as confirm_dialog, ui.card().classes('p-8 w-[360px]'):
+            ui.label('Menüpunkt löschen').classes(
+                'text-[18px] font-semibold text-[#1e3a5f]'
             )
-            ui.label(f'Soll "{label}" wirklich gelöscht werden?').style(
-                'margin-top: 12px; color: #444; font-size: 14px;'
+            ui.label(f'Soll "{label}" wirklich gelöscht werden?').classes(
+                'mt-3 text-[#444] text-[14px]'
             )
 
             def do_delete() -> None:
@@ -219,13 +215,11 @@ def menu_items_page() -> None:
                 ui.notify(f'"{label}" gelöscht.', type='warning')
                 load_items()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=confirm_dialog.close).props('flat')
                 ui.button(
                     'Löschen', icon='delete', on_click=do_delete,
-                ).props('unelevated').style(
-                    'background-color: #d32f2f; color: white;'
+                ).props('unelevated').classes(
+                    'bg-[#d32f2f] text-white'
                 )
         confirm_dialog.open()

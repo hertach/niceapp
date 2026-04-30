@@ -6,15 +6,15 @@ from app.models.role import Role
 
 def roles_page() -> None:
 
-    ui.label('Rollenverwaltung').style(
-        'font-size: 24px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+    ui.label('Rollenverwaltung').classes(
+        'text-[24px] font-semibold text-[#1e3a5f] mb-4'
     )
 
-    with ui.row().style('margin-bottom: 16px;'):
+    with ui.row().classes('mb-4'):
         ui.button(
             'Neue Rolle', icon='add',
             on_click=lambda: open_dialog(),
-        ).props('unelevated').style('background-color: #0078d4; color: white;')
+        ).props('unelevated').classes('bg-[#0078d4] text-white')
 
     # ── Daten laden ──────────────────────────────────────────
     def get_role_data() -> list[dict]:
@@ -39,7 +39,7 @@ def roles_page() -> None:
         ],
         rows=get_role_data(),
         row_key='id',
-    ).style('width: 100%;')
+    ).classes('w-full')
 
     table.add_slot('body-cell-actions', '''
         <q-td :props="props">
@@ -70,10 +70,10 @@ def roles_page() -> None:
 
     def open_dialog(role_id: int | None = None) -> None:
         dialog.clear()
-        with dialog, ui.card().style('width: 400px; padding: 32px;'):
+        with dialog, ui.card().classes('w-[400px] p-8'):
             title = 'Neue Rolle' if role_id is None else 'Rolle bearbeiten'
-            ui.label(title).style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+            ui.label(title).classes(
+                'text-[18px] font-semibold text-[#1e3a5f] mb-4'
             )
 
             existing: Role | None = None
@@ -85,16 +85,16 @@ def roles_page() -> None:
                 label='Rollenname',
                 value=existing.name if existing else '',
                 placeholder='z.B. manager',
-            ).style('width: 100%;')
+            ).classes('w-full')
 
             desc_input = ui.input(
                 label='Beschreibung',
                 value=existing.description if existing else '',
                 placeholder='Kurze Beschreibung der Rolle',
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
-            error = ui.label('').style(
-                'color: #d32f2f; font-size: 12px; min-height: 18px;'
+            error = ui.label('').classes(
+                'text-[#d32f2f] text-[12px] min-h-[18px]'
             )
 
             def save() -> None:
@@ -123,12 +123,10 @@ def roles_page() -> None:
                 dialog.close()
                 load_roles()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=dialog.close).props('flat')
-                ui.button('Speichern', on_click=save).props('unelevated').style(
-                    'background-color: #0078d4; color: white;'
+                ui.button('Speichern', on_click=save).props('unelevated').classes(
+                    'bg-[#0078d4] text-white'
                 )
         dialog.open()
 
@@ -141,17 +139,15 @@ def roles_page() -> None:
             )
             return
 
-        with ui.dialog() as confirm_dialog, ui.card().style(
-            'padding: 32px; width: 360px;'
-        ):
-            ui.label('Rolle löschen').style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f;'
+        with ui.dialog() as confirm_dialog, ui.card().classes('p-8 w-[360px]'):
+            ui.label('Rolle löschen').classes(
+                'text-[18px] font-semibold text-[#1e3a5f]'
             )
-            ui.label(f'Soll die Rolle "{name}" wirklich gelöscht werden?').style(
-                'margin-top: 12px; color: #444; font-size: 14px;'
+            ui.label(f'Soll die Rolle "{name}" wirklich gelöscht werden?').classes(
+                'mt-3 text-[#444] text-[14px]'
             )
-            ui.label('Diese Aktion kann nicht rückgängig gemacht werden.').style(
-                'color: #d32f2f; font-size: 12px; margin-top: 4px;'
+            ui.label('Diese Aktion kann nicht rückgängig gemacht werden.').classes(
+                'text-[#d32f2f] text-[12px] mt-1'
             )
 
             def do_delete() -> None:
@@ -164,13 +160,11 @@ def roles_page() -> None:
                 ui.notify(f'Rolle "{name}" gelöscht.', type='warning')
                 load_roles()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=confirm_dialog.close).props('flat')
                 ui.button(
                     'Löschen', icon='delete', on_click=do_delete,
-                ).props('unelevated').style(
-                    'background-color: #d32f2f; color: white;'
+                ).props('unelevated').classes(
+                    'bg-[#d32f2f] text-white'
                 )
         confirm_dialog.open()

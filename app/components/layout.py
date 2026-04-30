@@ -16,26 +16,21 @@ COLORS = {
     'content_bg':  '#f3f6f9',
 }
 
-# Gemeinsame Basis für aktive/inaktive Nav-Items
-_NAV_ROW_BASE = (
-    'align-items: center; gap: 12px; padding: 10px 20px; '
-    'cursor: pointer; transition: background 0.15s ease; '
-)
+# Gemeinsame Basis-Klassen für die Navigation (Flexbox, Abstände, Cursor, Transition)
+_NAV_ROW_BASE_CLASSES = 'items-center gap-3 px-5 py-[10px] cursor-pointer transition-colors duration-150 border-l-[3px]'
 
 
 def _apply_active(row: ui.row) -> None:
-    row.style(
-        _NAV_ROW_BASE +
-        f'background-color: {COLORS["accent"]}; '
-        'border-left: 3px solid white;'
+    row.classes(
+        add=f'bg-[{COLORS["accent"]}] border-white',
+        remove='bg-transparent border-transparent'
     )
 
 
 def _apply_inactive(row: ui.row) -> None:
-    row.style(
-        _NAV_ROW_BASE +
-        'background-color: transparent; '
-        'border-left: 3px solid transparent;'
+    row.classes(
+        add='bg-transparent border-transparent',
+        remove=f'bg-[{COLORS["accent"]}] border-white'
     )
 
 
@@ -53,41 +48,40 @@ def _load_nav_items(current_role: str) -> list[MenuItem]:
 
 
 def _header() -> None:
-    with ui.header().style(
-        f'background-color: {COLORS["header_bg"]}; '
-        'height: 48px; padding: 0 16px; '
-        'display: flex; align-items: center; justify-content: space-between;'
+    # Der Haupt-Header mit items-center (zentriert beide Child-Rows vertikal)
+    with ui.header().classes(
+            f'bg-[{COLORS["header_bg"]}] h-[56px] px-[16px] flex items-center justify-between'
     ):
-        with ui.row().style('align-items: center; gap: 10px;'):
-            ui.image(APP_LOGO).style('height: 28px; width: 28px;')
-            ui.label(APP_TITLE).style(
-                f'color: {COLORS["app_title"]}; '
-                'font-size: 18px; font-weight: 600; letter-spacing: 0.5px;'
+        # LINKE SEITE
+        with ui.row().classes('items-center !gap-[10px]', remove='gap-4'):
+            ui.image(APP_LOGO).classes('h-[28px] w-[28px]')
+            ui.label(APP_TITLE).classes(
+                f'text-[{COLORS["app_title"]}] text-[18px] font-semibold tracking-[0.5px] leading-none'
             )
 
-        with ui.row().style('align-items: center; gap: 16px;'):
+        # RECHTE SEITE
+        with ui.row().classes('items-center !gap-[16px]', remove='gap-4'):
             username = nicegui_app.storage.user.get('username', '')
-            role     = nicegui_app.storage.user.get('role', '')
+            role = nicegui_app.storage.user.get('role', '')
 
-            ui.icon('account_circle').style(
-                f'color: {COLORS["app_title"]}; font-size: 24px;'
+            ui.icon('account_circle').classes(
+                f'text-[{COLORS["app_title"]}] text-[24px] leading-none'
             )
-            ui.label(f'{username} ({role})').style(
-                f'color: {COLORS["app_title"]}; font-size: 13px;'
+            ui.label(f'{username} ({role})').classes(
+                f'text-[{COLORS["app_title"]}] text-[13px] leading-none'
             )
-            ui.separator().style(
-                'width: 1px; height: 24px; '
-                'background-color: rgba(255,255,255,0.2);'
-            )
+
+            ui.separator().classes('w-[1px] h-[24px] bg-white/20')
 
             def handle_logout() -> None:
                 nicegui_app.storage.user.clear()
                 ui.navigate.to('/login')
 
+            # Der Button ist durch 'dense' von Haus aus kompakt und zentriert sich im items-center Container perfekt mit
             ui.button(
-                icon='logout', on_click=handle_logout,
-            ).props(f'flat round text-color={COLORS["app_title"]}').style(
-                f'color: {COLORS["app_title"]};'
+                icon='logout', on_click=handle_logout, color=None
+            ).props('flat round dense').classes(
+                f'!text-[{COLORS["app_title"]}]'
             ).tooltip('Abmelden')
 
 
@@ -96,12 +90,11 @@ def _sidebar(navigate: Callable, current_path: str = '/') -> dict[str, ui.row]:
     nav_items    = _load_nav_items(current_role)
     nav_refs: dict[str, ui.row] = {}
 
-    with ui.left_drawer(fixed=True).style(
-        f'background-color: {COLORS["sidebar_bg"]}; '
-        'padding: 8px 0; width: 220px;'
+    with ui.left_drawer(fixed=True).classes(
+        f'bg-[{COLORS["sidebar_bg"]}] py-2 w-[220px]'
     ):
-        ui.separator().style('background-color: rgba(255,255,255,0.1); margin: 0;')
-        ui.element('div').style('height: 8px;')
+        ui.separator().classes('bg-white/10 m-0')
+        ui.element('div').classes('h-2')
 
         for item in nav_items:
             row = _nav_item(
@@ -123,13 +116,12 @@ def _nav_item(
 ) -> ui.row:
     row = (
         ui.row()
-        .style(_NAV_ROW_BASE + 'border-left: 3px solid transparent;')
-        .classes('nav-item')
+        .classes(f'{_NAV_ROW_BASE_CLASSES} bg-transparent border-transparent nav-item')
         .on('click', lambda p=path: navigate(p))
     )
     with row:
-        ui.icon(icon).style(f'color: {COLORS["text_muted"]}; font-size: 20px;')
-        ui.label(label).style(f'color: {COLORS["text_muted"]}; font-size: 14px;')
+        ui.icon(icon).classes(f'text-[{COLORS["text_muted"]}] text-[20px]')
+        ui.label(label).classes(f'text-[{COLORS["text_muted"]}] text-[14px]')
 
     if active:
         _apply_active(row)
@@ -143,8 +135,7 @@ def main_layout(
 ) -> tuple[ui.column, dict[str, ui.row]]:
     _header()
     nav_refs = _sidebar(navigate, current_path)
-    content  = ui.column().style(
-        f'background-color: {COLORS["content_bg"]}; '
-        'padding: 24px; width: 100%; min-height: 100vh;'
+    content  = ui.column().classes(
+        f'bg-[{COLORS["content_bg"]}] p-6 w-full min-h-screen'
     )
     return content, nav_refs

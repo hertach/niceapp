@@ -8,15 +8,15 @@ from app.models.role import Role
 
 def users_page() -> None:
 
-    ui.label('Benutzerverwaltung').style(
-        'font-size: 24px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+    ui.label('Benutzerverwaltung').classes(
+        'text-[24px] font-semibold text-[#1e3a5f] mb-4'
     )
 
-    with ui.row().style('margin-bottom: 16px;'):
+    with ui.row().classes('mb-4'):
         ui.button(
             'Neuer Benutzer', icon='add',
             on_click=lambda: open_dialog(),
-        ).props('unelevated').style('background-color: #0078d4; color: white;')
+        ).props('unelevated').classes('bg-[#0078d4] text-white')
 
     # ── Daten laden ──────────────────────────────────────────
     def get_user_data() -> list[dict]:
@@ -43,7 +43,7 @@ def users_page() -> None:
         ],
         rows=get_user_data(),
         row_key='id',
-    ).style('width: 100%;')
+    ).classes('w-full')
 
     # ── Edit/Delete Buttons via Quasar Slot ──────────────────
     table.add_slot('body-cell-actions', '''
@@ -80,10 +80,10 @@ def users_page() -> None:
             all_roles    = session.query(Role).order_by(Role.name).all()
             role_options = [r.name for r in all_roles]
 
-        with dialog, ui.card().style('width: 400px; padding: 32px;'):
+        with dialog, ui.card().classes('w-[400px] p-8'):
             title = 'Neuer Benutzer' if user_id is None else 'Benutzer bearbeiten'
-            ui.label(title).style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px;'
+            ui.label(title).classes(
+                'text-[18px] font-semibold text-[#1e3a5f] mb-4'
             )
 
             existing: User | None = None
@@ -94,27 +94,27 @@ def users_page() -> None:
             username_input = ui.input(
                 label='Benutzername',
                 value=existing.username if existing else '',
-            ).style('width: 100%;')
+            ).classes('w-full')
 
             password_input = ui.input(
                 label='Passwort' if not existing else 'Neues Passwort (leer = unverändert)',
                 password=True,
                 password_toggle_button=True,
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
             role_select = ui.select(
                 label='Rolle',
                 options=role_options,
                 value=existing.role if existing else role_options[0],
-            ).style('width: 100%; margin-top: 12px;')
+            ).classes('w-full mt-3')
 
             active_toggle = ui.switch(
                 'Aktiv',
                 value=existing.is_active if existing else True,
-            ).style('margin-top: 12px;')
+            ).classes('mt-3')
 
-            error = ui.label('').style(
-                'color: #d32f2f; font-size: 12px; min-height: 18px;'
+            error = ui.label('').classes(
+                'text-[#d32f2f] text-[12px] min-h-[18px]'
             )
 
             def save() -> None:
@@ -145,28 +145,24 @@ def users_page() -> None:
                 dialog.close()
                 load_users()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=dialog.close).props('flat')
-                ui.button('Speichern', on_click=save).props('unelevated').style(
-                    'background-color: #0078d4; color: white;'
+                ui.button('Speichern', on_click=save).props('unelevated').classes(
+                    'bg-[#0078d4] text-white'
                 )
         dialog.open()
 
     # ── Delete-Dialog ────────────────────────────────────────
     def confirm_delete(user_id: int, username: str) -> None:
-        with ui.dialog() as confirm_dialog, ui.card().style(
-            'padding: 32px; width: 360px;'
-        ):
-            ui.label('Benutzer löschen').style(
-                'font-size: 18px; font-weight: 600; color: #1e3a5f;'
+        with ui.dialog() as confirm_dialog, ui.card().classes('p-8 w-[360px]'):
+            ui.label('Benutzer löschen').classes(
+                'text-[18px] font-semibold text-[#1e3a5f]'
             )
-            ui.label(f'Soll "{username}" wirklich gelöscht werden?').style(
-                'margin-top: 12px; color: #444; font-size: 14px;'
+            ui.label(f'Soll "{username}" wirklich gelöscht werden?').classes(
+                'mt-3 text-[#444] text-[14px]'
             )
-            ui.label('Diese Aktion kann nicht rückgängig gemacht werden.').style(
-                'color: #d32f2f; font-size: 12px; margin-top: 4px;'
+            ui.label('Diese Aktion kann nicht rückgängig gemacht werden.').classes(
+                'text-[#d32f2f] text-[12px] mt-1'
             )
 
             def do_delete() -> None:
@@ -179,13 +175,11 @@ def users_page() -> None:
                 ui.notify(f'"{username}" gelöscht.', type='warning')
                 load_users()
 
-            with ui.row().style(
-                'margin-top: 24px; gap: 8px; justify-content: flex-end;'
-            ):
+            with ui.row().classes('mt-6 gap-2 justify-end w-full'):
                 ui.button('Abbrechen', on_click=confirm_dialog.close).props('flat')
                 ui.button(
                     'Löschen', icon='delete', on_click=do_delete,
-                ).props('unelevated').style(
-                    'background-color: #d32f2f; color: white;'
+                ).props('unelevated').classes(
+                    'bg-[#d32f2f] text-white'
                 )
         confirm_dialog.open()
