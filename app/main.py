@@ -9,6 +9,7 @@ from app.models.user import User
 from app.pages.dashboard import dashboard_page
 from app.pages.patients import patients_page
 from app.pages.admin.settings import settings_page
+from app.pages.patient_detail import patient_detail_page
 from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
@@ -47,9 +48,9 @@ def page(path: str) -> Callable:
 def _dashboard() -> None:
     pass  # wird unten via _render_page überschrieben – siehe Hinweis
 
-@page('/patients')
-def _patients() -> None:
-    patients_page()
+# @page('/patients')
+# def _patients() -> None:
+#     patients_page()
 
 @page('/admin/settings')
 def _settings()-> None:
@@ -100,8 +101,11 @@ def main() -> None:
             if not page_fn:
                 ui.notify('Seite nicht gefunden.', type='negative')
                 return
-            if not check_access(path):
-                return
+
+            allowed_sub_pages = ['/patient_detail']
+            if path not in allowed_sub_pages:
+                if not check_access(path):
+                    return
 
             if active_path[0] in nav_refs_ref[0]:
                 _apply_inactive(nav_refs_ref[0][active_path[0]])
@@ -115,6 +119,8 @@ def main() -> None:
 
         # navigate ist jetzt definiert → Dashboard korrekt registrieren
         PAGES['/'] = lambda: dashboard_page(navigate)
+        PAGES['/patients'] = lambda: patients_page(navigate)
+        PAGES['/patient_detail'] = lambda: patient_detail_page(navigate)
 
         content, nav_refs = main_layout(navigate, active_path[0])
         content_ref.append(content)

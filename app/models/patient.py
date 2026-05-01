@@ -1,41 +1,24 @@
 # app/models/patient.py
-import datetime
-from sqlalchemy import Date, ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, Text
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
 class Patient(Base):
     __tablename__ = 'patients'
 
-    id:               Mapped[int]                  = mapped_column(primary_key=True)
-    first_name:       Mapped[str]                  = mapped_column(String(64))
-    last_name:        Mapped[str]                  = mapped_column(String(64))
-    date_of_birth:    Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    birthdate = Column(Date, nullable=True)
+    gender = Column(String(20), nullable=True)  # <-- NEU: Geschlecht
+    notes = Column(Text, nullable=True)
 
-    # '' | 'm' | 'f' | 'divers'
-    gender:           Mapped[str]                  = mapped_column(String(16), default='')
-
-    # Contact
-    phone:            Mapped[str]                  = mapped_column(String(32),  default='')
-    email:            Mapped[str]                  = mapped_column(String(128), default='')
-
-    # Address
-    street:           Mapped[str]                  = mapped_column(String(128), default='')
-    postal_code:      Mapped[str]                  = mapped_column(String(16),  default='')
-    city:             Mapped[str]                  = mapped_column(String(64),  default='')
-
-    # Insurance
-    insurance_name:   Mapped[str]                  = mapped_column(String(128), default='')
-    insurance_number: Mapped[str]                  = mapped_column(String(64),  default='')
-
-    # General
-    notes:            Mapped[str]                  = mapped_column(Text, default='')
-    is_active:        Mapped[bool]                 = mapped_column(default=True)
-    created_at:       Mapped[datetime.datetime]    = mapped_column(default=datetime.datetime.utcnow)
-
-    # Optional: assign to a specific therapist (multi-practice)
-    therapist_id:     Mapped[int | None]           = mapped_column(ForeignKey('users.id'), nullable=True)
+    # ── 1:n Beziehungen ──
+    addresses = relationship("PatientAddress", back_populates="patient", cascade="all, delete-orphan")
+    emails = relationship("PatientEmail", back_populates="patient", cascade="all, delete-orphan")
+    phones = relationship("PatientPhone", back_populates="patient", cascade="all, delete-orphan")
+    insurances = relationship("PatientInsurance", back_populates="patient", cascade="all, delete-orphan")  # <-- NEU
 
     @property
     def full_name(self) -> str:
@@ -43,3 +26,53 @@ class Patient(Base):
 
     def __repr__(self) -> str:
         return f'<Patient {self.full_name}>'
+
+class PatientAddress(Base):
+    __tablename__ = 'patient_addresses'
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    street = Column(String(200))
+    zip_code = Column(String(20))
+    city = Column(String(100))
+    is_main = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)  # Soft-Delete
+
+    patient = relationship("Patient", back_populates="addresses")
+
+
+class PatientEmail(Base):
+    __tablename__ = 'patient_emails'
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    email = Column(String(255))
+    is_main = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)  # Soft-Delete
+
+    patient = relationship("Patient", back_populates="emails")
+
+
+class PatientPhone(Base):
+    __tablename__ = 'patient_phones'
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    number = Column(String(50))
+    type = Column(String(50))  # z.B. "Mobil", "Privat", "Geschäftlich"
+    is_main = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)  # Soft-Delete
+
+    patient = relationship("Patient", back_populates="phones")
+
+
+class PatientInsurance(Base):
+    __tablename__ = 'patient_insurances'
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    name = Column(String(200), nullable=False)  # Name der Krankenkasse
+    insurance_number = Column(String(100))  # Versichertennummer
+    is_deleted = Column(Boolean, default=False)  # True = Alte Versicherung (Historie)
+
+    patient = relationship("Patient", back_populates="insurances")
