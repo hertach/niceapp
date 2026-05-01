@@ -19,6 +19,8 @@ class LogEntry(LogBase):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     level = Column(String(20), index=True)
     module = Column(String(100))
+    filename = Column(String(100))      # <-- Neu: Dateiname
+    func_name = Column(String(100))     # <-- Neu: Funktionsname
     message = Column(Text)
 
 def init_log_db():

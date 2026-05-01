@@ -2,15 +2,37 @@
 from nicegui import ui
 from sqlalchemy import desc
 from app.models.log_entry import LogEntry, LogSessionLocal
+from app.core.logger import clear_logs, vacuum_logs, archive_logs
 
 
 def logs_page() -> None:
-    ui.label('System-Logs').classes('text-[24px] font-semibold text-[#1e3a5f] mb-4')
+    with ui.row().classes('items-center justify-between w-full mb-4'):
+        ui.label('System-Logs').classes('text-[24px] font-semibold text-[#1e3a5f]')
+
+        # ── Wartungs-Buttons ──
+        with ui.row().classes('gap-2'):
+            ui.button('Archivieren', icon='archive', on_click=lambda: handle_action('archive')).props(
+                'outline dense').classes('text-blue-600')
+            ui.button('Schrumpfen', icon='compress', on_click=lambda: handle_action('vacuum')).props(
+                'outline dense').classes('text-green-600')
+            ui.button('Leeren', icon='delete_sweep', on_click=lambda: handle_action('clear')).props(
+                'outline dense color="negative"')
 
     filter_state = {'level': 'Alle', 'search': ''}
 
+    def handle_action(action: str):
+        if action == 'clear':
+            clear_logs()
+            ui.notify('Logs wurden geleert', type='warning')
+        elif action == 'vacuum':
+            vacuum_logs()
+            ui.notify('Datenbank wurde geschrumpft', type='positive')
+        elif action == 'archive':
+            path = archive_logs()
+            ui.notify(f'Archiviert: {path}', type='positive')
+        update_table()
+
     def fetch_logs():
-        # Nutzt die isolierte Log-Session!
         with LogSessionLocal() as session:
             query = session.query(LogEntry)
 
@@ -19,7 +41,9 @@ def logs_page() -> None:
 
             if filter_state['search']:
                 search_term = f"%{filter_state['search']}%"
-                query = query.filter(LogEntry.message.ilike(search_term) | LogEntry.module.ilike(search_term))
+                query = query.filter(
+                    LogEntry.message.ilike(search_term) | LogEntry.module.ilike(search_term) | LogEntry.filename.ilike(
+                        search_term) | LogEntry.func_name.ilike(search_term))
 
             logs = query.order_by(desc(LogEntry.timestamp)).limit(100).all()
 
@@ -29,6 +53,7 @@ def logs_page() -> None:
                     'timestamp': l.timestamp.strftime('%d.%m.%Y %H:%M:%S'),
                     'level': l.level,
                     'module': l.module,
+                    'location': f"{l.filename} -> {l.func_name}()",  # Zusammengefasst für bessere Lesbarkeit
                     'message': l.message
                 } for l in logs
             ]
@@ -37,6 +62,7 @@ def logs_page() -> None:
         table.rows = fetch_logs()
         table.update()
 
+    # ── Filter UI ──
     with ui.row().classes('w-full items-center gap-4 mb-4'):
         ui.select(
             ['Alle', 'INFO', 'WARNING', 'ERROR'],
@@ -56,11 +82,13 @@ def logs_page() -> None:
         ui.space()
         ui.button('Aktualisieren', icon='refresh', on_click=update_table).props('flat')
 
+    # ── Tabelle ──
     table = ui.table(
         columns=[
             {'name': 'timestamp', 'label': 'Zeit', 'field': 'timestamp', 'align': 'left'},
             {'name': 'level', 'label': 'Level', 'field': 'level', 'align': 'left'},
             {'name': 'module', 'label': 'Modul', 'field': 'module', 'align': 'left'},
+            {'name': 'location', 'label': 'Datei / Funktion', 'field': 'location', 'align': 'left'},
             {'name': 'message', 'label': 'Nachricht', 'field': 'message', 'align': 'left'},
         ],
         rows=fetch_logs(),
