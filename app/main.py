@@ -1,4 +1,5 @@
 # app/main.py
+import asyncio
 from pathlib import Path
 from nicegui import ui, app as nicegui_app
 from app.pages.login import login_page
@@ -14,7 +15,7 @@ from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
 from app.models.log_entry import init_log_db
 from app.models.app_setting import AppSetting
 from app.core.logger import update_console_logger
-from app.core.logger import app_logger
+from app.core.backup import backup_on_shutdown, backup_scheduler_loop
 
 
 def apply_initial_settings():
@@ -72,6 +73,9 @@ def main() -> None:
     init_log_db()
     apply_initial_settings()
     create_test_user()
+
+    nicegui_app.on_startup(lambda: asyncio.create_task(backup_scheduler_loop()))
+    nicegui_app.on_shutdown(backup_on_shutdown)
 
     nicegui_app.add_static_files('/static', Path(__file__).parent / 'static')
     css_path = Path(__file__).parent / 'static' / 'style.css'

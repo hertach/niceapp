@@ -10,7 +10,7 @@ APP_TITLE       = os.getenv('APP_TITLE',  'NiceApp')
 APP_LOGO        = os.getenv('APP_LOGO',   'app/static/icons/logo.png')
 STORAGE_SECRET  = os.getenv('STORAGE_SECRET', 'fallback-secret-change-me')
 DB_PATH         = os.getenv('DB_PATH',    'data/app.db')
-LOG_PATH         = os.getenv('LOG_PATH',    'data/log.db')
+LOG_PATH        = os.getenv('LOG_PATH',    'data/log.db')
 PORT            = int(os.getenv('PORT',   '8080'))
 RELOAD          = os.getenv('RELOAD', 'false').lower() == 'true'
 

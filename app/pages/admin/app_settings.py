@@ -3,9 +3,8 @@ from nicegui import ui
 from app.core.database import get_session
 from app.models.app_setting import AppSetting
 from app.core.logger import update_console_logger
-
-# NEU: Den Picker importieren
 from app.components.directory_picker import DirectoryPicker
+from app.core.backup import perform_backup
 
 
 def app_settings_page() -> None:
@@ -19,7 +18,11 @@ def app_settings_page() -> None:
             session.commit()
             session.refresh(setting)
 
+        # BACKUP
         current_backup_path = setting.backup_path
+        current_backup_on_close = setting.backup_on_close
+        current_backup_schedule = setting.backup_schedule
+        # LOGGING
         current_log_terminal = setting.log_to_terminal
 
     with ui.card().classes('w-full max-w-3xl p-8 shadow-sm border border-slate-200'):
@@ -38,10 +41,30 @@ def app_settings_page() -> None:
                 placeholder='./backups'
             ).classes('w-full').props('outlined dense')
 
-            # ── NEU: Der Button direkt im Input-Feld ──
             with backup_input.add_slot('append'):
                 ui.button(icon='folder', on_click=open_picker).props('flat round dense')
 
+            backup_on_close_toggle = ui.switch(
+                'Backup beim Schließen der App erstellen (Nativ / Server-Stop)',
+                value=current_backup_on_close
+            ).classes('text-slate-700')
+
+            schedule_select = ui.select(
+                options={'none': 'Nie (Nur manuell)', 'daily': 'Täglich', 'weekly': 'Wöchentlich'},
+                label='Automatischer Backup-Plan (Hintergrund)',
+                value=current_backup_schedule
+            ).classes('w-full max-w-[300px]').props('outlined dense')
+
+            def trigger_manual_backup():
+                if perform_backup():
+                    ui.notify('Backup erfolgreich erstellt ✅', type='positive')
+                else:
+                    ui.notify('Fehler beim Backup. Prüfe die Logs.', type='negative')
+
+            ui.button('Backup jetzt erstellen', icon='save_alt', on_click=trigger_manual_backup).props(
+                'outline').classes('text-[#0078d4]')
+
+            #-- LOGGING--
             ui.separator().props('dense')
             ui.label('Log-Konfiguration').classes('font-medium text-slate-700')
             terminal_toggle = ui.switch(
@@ -53,6 +76,8 @@ def app_settings_page() -> None:
             with get_session() as session:
                 s = session.query(AppSetting).first()
                 s.backup_path = backup_input.value
+                s.backup_on_close = backup_on_close_toggle.value
+                s.backup_schedule = schedule_select.value
                 s.log_to_terminal = terminal_toggle.value
                 session.commit()
 
