@@ -25,7 +25,7 @@ def app_settings_page() -> None:
     with ui.card().classes('w-full max-w-3xl p-8 shadow-sm border border-slate-200'):
 
         with ui.column().classes('w-full gap-6'):
-            # ── NEU: Die Funktion, die den Dialog aufruft ──
+            ui.label('Backup-Konfiguration').classes('font-medium text-slate-700')
             async def open_picker():
                 # Wir übergeben den aktuell eingetippten Pfad als Startpunkt
                 result = await DirectoryPicker(backup_input.value or '.')
@@ -42,6 +42,8 @@ def app_settings_page() -> None:
             with backup_input.add_slot('append'):
                 ui.button(icon='folder', on_click=open_picker).props('flat round dense')
 
+            ui.separator().props('dense')
+            ui.label('Log-Konfiguration').classes('font-medium text-slate-700')
             terminal_toggle = ui.switch(
                 'Logs zusätzlich im Terminal ausgeben',
                 value=current_log_terminal
