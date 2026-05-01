@@ -4,6 +4,7 @@ from app.pages.admin.users import users_page
 from app.pages.admin.roles import roles_page
 from app.pages.admin.menu_items import menu_items_page
 from app.pages.admin.logs import logs_page
+from app.pages.admin.app_settings import app_settings_page
 
 def settings_page() -> None:
     # State-Variable, um sich den aktuellen Tab zu merken
@@ -44,6 +45,7 @@ def settings_page() -> None:
             menu_item('users', 'Benutzer', 'people')
             menu_item('roles', 'Rollen', 'admin_panel_settings')
             menu_item('menu', 'Menüpunkte', 'menu')
+            menu_item('app_settings', 'App-Einstellungen', 'settings_applications')
             menu_item('logs', 'System-Logs', 'list_alt')
 
     def load_tab(tab_id: str) -> None:
@@ -63,6 +65,8 @@ def settings_page() -> None:
                 roles_page()
             elif tab_id == 'menu':
                 menu_items_page()
+            elif tab_id == 'app_settings':
+                app_settings_page()
             elif tab_id == 'logs':
                 logs_page()
 

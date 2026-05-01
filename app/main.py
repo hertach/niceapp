@@ -12,7 +12,22 @@ from app.components.layout import main_layout, _apply_active, _apply_inactive
 from typing import Callable
 from app.config import APP_TITLE, STORAGE_SECRET, PORT, RELOAD
 from app.models.log_entry import init_log_db
+from app.models.app_setting import AppSetting
+from app.core.logger import update_console_logger
 from app.core.logger import app_logger
+
+
+def apply_initial_settings():
+    """Lädt die App-Settings aus der DB und wendet sie an."""
+    with get_session() as session:
+        setting = session.query(AppSetting).first()
+        if not setting:
+            setting = AppSetting()
+            session.add(setting)
+            session.commit()
+
+        # Logger entsprechend konfigurieren
+        update_console_logger(setting.log_to_terminal)
 
 PAGES: dict[str, Callable] = {}
 
@@ -55,9 +70,9 @@ def create_test_user() -> None:
 def main() -> None:
     init_db()
     init_log_db()
+    apply_initial_settings()
     create_test_user()
-    app_logger.info("Anwendung und Log-Datenbank gestartet.")
-    
+
     nicegui_app.add_static_files('/static', Path(__file__).parent / 'static')
     css_path = Path(__file__).parent / 'static' / 'style.css'
     ui.add_css(css_path.read_text(), shared=True)

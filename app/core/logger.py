@@ -26,6 +26,9 @@ class DatabaseLogHandler(logging.Handler):
             self.handleError(record)
 
 
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('[%(levelname)s] [%(filename)s:%(funcName)s] %(message)s'))
+
 def setup_logger():
     """Initialisiert den globalen Logger der App."""
     logger = logging.getLogger('niceapp')
@@ -37,14 +40,21 @@ def setup_logger():
         db_handler.setFormatter(formatter)
         logger.addHandler(db_handler)
 
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter('[%(levelname)s] [%(filename)s:%(funcName)s] %(message)s'))
+        # Standardmäßig Konsole an (wird beim App-Start aus der DB überschrieben)
         logger.addHandler(console_handler)
 
     return logger
 
 
 app_logger = setup_logger()
+
+def update_console_logger(enable: bool):
+    """Aktiviert oder deaktiviert den Output im Terminal zur Laufzeit."""
+    logger = logging.getLogger('niceapp')
+    if enable and console_handler not in logger.handlers:
+        logger.addHandler(console_handler)
+    elif not enable and console_handler in logger.handlers:
+        logger.removeHandler(console_handler)
 
 
 # ── Wartungs-Funktionen für die Datenbank ──
