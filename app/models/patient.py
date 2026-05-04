@@ -47,6 +47,7 @@ class PatientEmail(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     email = Column(String(255))
+    type = Column(String(50))
     is_main = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)  # Soft-Delete
 
