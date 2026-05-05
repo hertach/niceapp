@@ -621,7 +621,7 @@ def patient_detail_page(navigate) -> None:
                 main_content.refresh()
 
             def get_btn_class(t):
-                base = 'w-full px-4 py-3 text-[14px] rounded-none transition-colors border-l-4 '
+                base = 'w-full px-4 py-3 text-[14px] rounded-none transition-colors border-r-4 '
                 return base + ('bg-blue-50 text-blue-700 border-blue-500' if state[
                                                                                  'active_tab'] == t else 'text-slate-600 hover:bg-slate-50 border-transparent')
 

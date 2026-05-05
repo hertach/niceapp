@@ -1,14 +1,14 @@
 # app/pages/admin/finance_settings.py
 from nicegui import ui
 from app.core.database import get_session
-from app.models.app_setting import AppSetting
+from app.core.logger import app_logger
 from app.components.inputs import date_input
-from app.models.finance_setting import VATSetting
+from app.models.finance_setting import VATSetting, PaymentMethod
 from datetime import datetime, date
 
 
 def finance_settings_page() -> None:
-    # ── Hilfsfunktionen ────────────────────────────────────────────
+    # ── VAT: Hilfsfunktionen ───────────────────────────────────────
     def get_vat_data() -> list[dict]:
         today = date.today()
         with get_session() as session:
@@ -46,8 +46,10 @@ def finance_settings_page() -> None:
                         vat.is_active = False
                     session.commit()
                     ui.notify(f'Enddatum für "{vat.description}" auf {new_end_date} gesetzt.')
+                    app_logger.info(f'Enddatum für "{vat.description}" auf {new_end_date} gesetzt.')
                     table.rows = get_vat_data()
         except ValueError:
+            app_logger.info(f'Ungültiges Datum für "{vat.description}"')
             ui.notify('Ungültiges Datum', type='negative')
 
     async def save_new_vat():
@@ -75,7 +77,65 @@ def finance_settings_page() -> None:
         except ValueError:
             ui.notify('Bitte prüfen Sie die Eingaben (Format TT.MM.JJJJ)', type='negative')
 
-    # ── UI: Modal / Dialog ──────────────────────────────────────────
+    # ── PAYMENT METHOD: Hilfsfunktionen ─────────────────────────────
+    pm_state = {'id': None}
+    def get_pm_data() -> list[dict]:
+        with get_session() as session:
+            pms = session.query(PaymentMethod).all()
+            rows = []
+            for r in pms:
+                rows.append({
+                    'id': r.id,
+                    'title': r.title,
+                    'is_active': r.is_active,
+                    # Wichtig: status_label hinzufügen, da deine UI-Tabelle danach sucht!
+                    'status_label': 'Aktiv' if r.is_active else 'Inaktiv'
+                })
+            return rows
+
+    def toggle_pm_status(pm_id: int):
+        """Aktiviert oder deaktiviert eine Bezahlmethode im Wechsel."""
+        with get_session() as session:
+            pm = session.query(PaymentMethod).filter_by(id=pm_id).first()
+            if pm:
+                # Kehrt den aktuellen Status um (True -> False, False -> True)
+                pm.is_active = not pm.is_active
+                session.commit()
+
+                status_text = "aktiviert" if pm.is_active else "deaktiviert"
+                ui.notify(f'Bezahlmethode "{pm.title}" {status_text}.', type='info')
+                pm_table.rows = get_pm_data()
+
+    async def save_pm():
+        """Speichert eine neue Bezahlmethode oder updatet eine bestehende."""
+        try:
+            with get_session() as session:
+                if pm_state['id']:
+                    # Bestehenden Eintrag updaten
+                    pm = session.query(PaymentMethod).filter_by(id=pm_state['id']).first()
+                    if pm:
+                        pm.title = title_input.value
+                        ui.notify('Bezahlmethode aktualisiert', type='positive')
+                else:
+                    # Neuen Eintrag anlegen
+                    new_pm = PaymentMethod(title=title_input.value, is_active=True)
+                    session.add(new_pm)
+                    ui.notify('Bezahlmethode hinzugefügt', type='positive')
+
+                session.commit()
+
+            pm_dialog.close()
+            pm_table.rows = get_pm_data()
+        except Exception as e:
+            ui.notify(f'Fehler beim Speichern: {e}', type='negative')
+
+    def open_pm_dialog(pm_id=None, current_title=''):
+        """Öffnet den Dialog und füllt ihn ggf. mit bestehenden Daten."""
+        pm_state['id'] = pm_id
+        title_input.value = current_title
+        pm_dialog.open()
+
+    # ── VAT: Modal / Dialog ─────────────────────────────────────────
     with ui.dialog() as vat_dialog, ui.card().classes('w-[400px]'):
         ui.label('Neuen MWSt-Satz anlegen').classes('text-lg font-bold mb-2')
         with ui.column().classes('w-full gap-4'):
@@ -89,11 +149,19 @@ def finance_settings_page() -> None:
         with ui.row().classes('w-full justify-end mt-4'):
             ui.button('Abbrechen', on_click=vat_dialog.close).props('flat')
             ui.button('Speichern', on_click=save_new_vat)
+    # ── PAYMENT METHOD: Modal / Dialog ──────────────────────────────
+    with ui.dialog() as pm_dialog, ui.card().classes('w-[400px]'):
+        ui.label('Neuen Bezahlmethode anlegen').classes('text-lg font-bold mb-2')
+        with ui.column().classes('w-full gap-4'):
+            title_input = ui.input('Beschreibung').classes('w-full')
 
+        with ui.row().classes('w-full justify-end mt-4'):
+            ui.button('Abbrechen', on_click=pm_dialog.close).props('flat')
+            ui.button('Speichern', on_click=save_pm)
     # ── Hauptseite ──────────────────────────────────────────────────
     ui.label('Finanz-Einstellungen').classes('text-[24px] font-semibold text-[#1e3a5f] mb-4')
-
     with ui.card().classes('w-full max-w-4xl p-8 shadow-sm border border-slate-200'):
+        # ── VAT: UI / TABLE ──────────────────────────────────────────
         with ui.column().classes('w-full gap-6'):
             with ui.row().classes('w-full justify-between items-center'):
                 ui.label('MWSt-Sätze').classes('font-medium text-slate-700 text-lg')
@@ -139,3 +207,57 @@ def finance_settings_page() -> None:
                                     </q-td>
                                 </q-tr>
                             ''')
+
+            ui.separator().props('dense')
+        # ── PAYMENT METHODS: UI / TABLE ──────────────────────────────
+        with ui.column().classes('w-full gap-6 mt-8'):
+            with ui.row().classes('w-full justify-between items-center'):
+                ui.label('Bezahlmethoden').classes('font-medium text-slate-700 text-lg')
+                # Button öffnet Dialog nun immer als "Neu" (pm_id=None)
+                ui.button('Bezahlmethode hinzufügen', icon='add', on_click=lambda: open_pm_dialog()).props(
+                    'outline size=sm')
+
+            # --- UI Tabelle (pm_table) ---
+            pm_table = ui.table(
+                columns=[
+                    {'name': 'title', 'label': 'Bezahlmethode', 'field': 'title', 'align': 'left'},
+                    {'name': 'status', 'label': 'Status', 'field': 'status_label', 'align': 'left'},
+                    {'name': 'actions', 'label': 'Aktionen', 'field': 'id', 'align': 'right'},
+                ],
+                rows=get_pm_data(),
+                row_key='id',
+            ).classes('w-full border-none shadow-none')
+
+            # Slot für Edit- und Deaktivieren-Buttons
+            pm_table.add_slot('body-cell-actions', r'''
+                            <q-td :props="props">
+                                <div class="row items-center justify-end no-wrap gap-1">
+                                    <!-- Bearbeiten (immer möglich) -->
+                                    <q-btn flat round dense icon="edit" color="primary"
+                                           @click="$parent.$emit('edit_pm', props.row)">
+                                        <q-tooltip>Bearbeiten</q-tooltip>
+                                    </q-btn>
+
+                                    <!-- Toggle Button (Icon und Farbe ändern sich je nach Status) -->
+                                    <q-btn flat round dense 
+                                           :icon="props.row.is_active ? 'block' : 'restore'" 
+                                           :color="props.row.is_active ? 'negative' : 'positive'"
+                                           @click="$parent.$emit('toggle_pm', props.row.id)">
+                                        <q-tooltip>{{ props.row.is_active ? 'Deaktivieren' : 'Wieder aktivieren' }}</q-tooltip>
+                                    </q-btn>
+                                </div>
+                            </q-td>
+                        ''')
+
+            # Event-Listener für die Table-Actions
+            pm_table.on('edit_pm', lambda msg: open_pm_dialog(msg.args['id'], msg.args['title']))
+            pm_table.on('toggle_pm', lambda msg: toggle_pm_status(msg.args))
+
+            # Styling für inaktive Zeilen
+            pm_table.add_slot('body-row', r'''
+                            <q-tr :props="props" :class="props.row.is_active ? '' : 'bg-slate-50 text-slate-400'">
+                                <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                                    {{ col.value }}
+                                </q-td>
+                            </q-tr>
+                        ''')
