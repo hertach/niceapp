@@ -74,7 +74,8 @@ def main() -> None:
     init_log_db()
     apply_initial_settings()
     create_test_user()
-
+    SpeechManager.ensure_models()
+    
     nicegui_app.on_startup(lambda: asyncio.create_task(backup_scheduler_loop()))
     nicegui_app.on_shutdown(backup_on_shutdown)
 

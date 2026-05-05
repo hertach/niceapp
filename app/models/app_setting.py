@@ -1,5 +1,5 @@
 # app/models/app_setting.py
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float
 from app.core.database import Base
 from datetime import datetime
 
@@ -14,3 +14,5 @@ class AppSetting(Base):
     last_backup = Column(DateTime, nullable=True)  # Merkt sich, wann das letzte Auto-Backup lief
     # ── LOGGING ──
     log_to_terminal = Column(Boolean, default=True)
+    # ── STREAMING INTERVAL ──
+    streaming_interval = Column(Float, default=0.5)

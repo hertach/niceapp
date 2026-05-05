@@ -24,6 +24,8 @@ def app_settings_page() -> None:
         current_backup_schedule = setting.backup_schedule
         # LOGGING
         current_log_terminal = setting.log_to_terminal
+        # STREAMING INTERVAL
+        current_streaming_interval = setting.streaming_interval
 
     with ui.card().classes('w-full max-w-3xl p-8 shadow-sm border border-slate-200'):
 
@@ -71,6 +73,15 @@ def app_settings_page() -> None:
                 'Logs zusätzlich im Terminal ausgeben',
                 value=current_log_terminal
             ).classes('text-slate-700')
+            # -- STREAMING INTERVAL --
+            ui.separator().props('dense')
+            ui.label('Spracherkennung').classes('font-medium text-slate-700')
+            streaming_interval = ui.input(
+                label='Interval',
+                value=current_streaming_interval,
+                placeholder='0.5'
+            ).classes('w-full').props('outlined dense type="number" step="0.05"')
+
 
         def save_settings():
             with get_session() as session:
@@ -79,6 +90,7 @@ def app_settings_page() -> None:
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value
                 s.log_to_terminal = terminal_toggle.value
+                s.streaming_interval = ''
                 session.commit()
 
             update_console_logger(terminal_toggle.value)

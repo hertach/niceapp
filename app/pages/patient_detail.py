@@ -10,6 +10,8 @@ from datetime import datetime
 from nicegui import ui, app as nicegui_app
 from app.core.database import get_session
 from app.models.patient import Patient, PatientInsurance, PatientAddress, PatientPhone, PatientEmail, PatientSession
+from app.core.speech import SpeechManager
+from app.models.app_setting import AppSetting
 
 # ── 1. KI INITIALISIERUNG (WHISPER) ──
 try:
@@ -218,6 +220,14 @@ def patient_detail_page(navigate) -> None:
 
             # --- Hintergrundprozess für das VOSK Live-Streaming ---
             async def live_transcription_loop():
+                with get_session() as session:
+                    setting = session.query(AppSetting).filter_by(key='streaming_interval').first()
+                    # Standard 0.5, falls kein Wert in DB
+                    interval = float(setting.value) if setting else 0.5
+
+                whisper_model = SpeechManager.get_whisper()
+                vosk_model = SpeechManager.get_vosk()
+                
                 spacer = '\n\n' if state['recording_original_text'] else ''
                 live_draft = ""
                 display_str = ""
@@ -226,7 +236,7 @@ def patient_detail_page(navigate) -> None:
                     rec = vosk.KaldiRecognizer(vosk_model, mac_sample_rate)
 
                 while state['recording_field'] == state_key:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.25)
                     if state['recording_field'] != state_key:
                         break
 
