@@ -80,7 +80,7 @@ def app_settings_page() -> None:
                 label='Interval',
                 value=current_streaming_interval,
                 placeholder='0.5'
-            ).classes('w-full').props('outlined dense type="number" step="0.05"')
+            ).classes('w-[150px]').props('outlined dense type="number" step="0.05"')
 
 
         def save_settings():
@@ -90,7 +90,7 @@ def app_settings_page() -> None:
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value
                 s.log_to_terminal = terminal_toggle.value
-                s.streaming_interval = ''
+                s.streaming_interval = streaming_interval.value
                 session.commit()
 
             update_console_logger(terminal_toggle.value)

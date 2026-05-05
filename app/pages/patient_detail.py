@@ -221,13 +221,12 @@ def patient_detail_page(navigate) -> None:
             # --- Hintergrundprozess für das VOSK Live-Streaming ---
             async def live_transcription_loop():
                 with get_session() as session:
-                    setting = session.query(AppSetting).filter_by(key='streaming_interval').first()
-                    # Standard 0.5, falls kein Wert in DB
-                    interval = float(setting.value) if setting else 0.5
+                    settings = session.query(AppSetting).first()
+                    interval = settings.streaming_interval if settings else 0.5
 
                 whisper_model = SpeechManager.get_whisper()
                 vosk_model = SpeechManager.get_vosk()
-                
+
                 spacer = '\n\n' if state['recording_original_text'] else ''
                 live_draft = ""
                 display_str = ""

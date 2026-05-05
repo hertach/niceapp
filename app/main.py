@@ -17,7 +17,7 @@ from app.models.log_entry import init_log_db
 from app.models.app_setting import AppSetting
 from app.core.logger import update_console_logger
 from app.core.backup import backup_on_shutdown, backup_scheduler_loop
-
+from app.core.speech import SpeechManager
 
 def apply_initial_settings():
     """Lädt die App-Settings aus der DB und wendet sie an."""
@@ -75,7 +75,7 @@ def main() -> None:
     apply_initial_settings()
     create_test_user()
     SpeechManager.ensure_models()
-    
+
     nicegui_app.on_startup(lambda: asyncio.create_task(backup_scheduler_loop()))
     nicegui_app.on_shutdown(backup_on_shutdown)
 
