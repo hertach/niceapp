@@ -3,12 +3,15 @@ import os
 import base64
 import tempfile
 import asyncio
+import json
+import urllib.request
+import zipfile
 from datetime import datetime
 from nicegui import ui, app as nicegui_app
 from app.core.database import get_session
 from app.models.patient import Patient, PatientInsurance, PatientAddress, PatientPhone, PatientEmail, PatientSession
 
-# ── 100% OFFLINE KI-SPRACHERKENNUNG INITIALISIEREN ──
+# ── 1. KI INITIALISIERUNG (WHISPER) ──
 try:
     from faster_whisper import WhisperModel
 
@@ -18,6 +21,26 @@ try:
 except ImportError:
     whisper_model = None
     print("FEHLER: faster-whisper ist nicht installiert!")
+
+# ── 2. KI INITIALISIERUNG (VOSK FÜR LIVE-STREAMING) ──
+try:
+    import vosk
+
+    print("Prüfe Vosk-Modell...")
+    VOSK_DIR = "vosk-model-small-de-0.15"
+    if not os.path.exists(VOSK_DIR):
+        print("Lade deutsches Vosk-Modell herunter (45 MB) - bitte kurz warten...")
+        urllib.request.urlretrieve("https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip", "vosk.zip")
+        with zipfile.ZipFile("vosk.zip", 'r') as z:
+            z.extractall(".")
+        os.remove("vosk.zip")
+
+    vosk.SetLogLevel(-1)
+    vosk_model = vosk.Model(VOSK_DIR)
+    print("Vosk (Streaming) erfolgreich geladen!")
+except Exception as e:
+    vosk_model = None
+    print(f"Vosk Info: {e}. (Live-Streaming deaktiviert)")
 
 
 def patient_detail_page(navigate) -> None:
@@ -38,9 +61,6 @@ def patient_detail_page(navigate) -> None:
 
     mic_buttons = {}
     textareas = {}
-
-    # NEU: Das Lock-System (Die Ampel für die KI)
-    ai_lock = {'is_busy': False}
 
     def load_data():
         if not patient_id: return
@@ -76,11 +96,8 @@ def patient_detail_page(navigate) -> None:
     except Exception as e:
         ui.notify(f"Datenbankfehler: {e}", type='negative')
 
-    # ── OFFLINE STREAMING TRANSKRIBIERUNG ──
+    # ── HYBRID-TRANSKRIBIERUNG (VOSK LIVE + WHISPER FINAL) ──
     async def toggle_recording(state_key):
-        if not whisper_model:
-            return ui.notify('faster-whisper ist nicht verfügbar!', type='negative')
-
         btn = mic_buttons.get(state_key)
         area = textareas.get(state_key)
 
@@ -89,17 +106,67 @@ def patient_detail_page(navigate) -> None:
             window.startLiveRecord = async function() {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+
+                    window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    await window.audioContext.resume(); 
+
+                    const source = window.audioContext.createMediaStreamSource(stream);
+                    window.processor = window.audioContext.createScriptProcessor(4096, 1, 1);
+                    window.pcmChunks = [];
+
+                    window.processor.onaudioprocess = function(e) {
+                        const float32 = e.inputBuffer.getChannelData(0);
+                        const int16 = new Int16Array(float32.length);
+                        for (let i = 0; i < float32.length; i++) {
+                            let s = Math.max(-1, Math.min(1, float32[i]));
+                            int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
+                        window.pcmChunks.push(int16);
+                    };
+
+                    const gainNode = window.audioContext.createGain();
+                    gainNode.gain.value = 0;
+                    source.connect(window.processor);
+                    window.processor.connect(gainNode);
+                    gainNode.connect(window.audioContext.destination);
+
                     window.liveRecorder = new MediaRecorder(stream);
                     window.liveChunks = [];
                     window.liveRecorder.ondataavailable = e => {
                         if (e.data.size > 0) window.liveChunks.push(e.data);
                     };
-                    window.liveRecorder.start(1000); 
-                    return "OK";
+                    window.liveRecorder.start();
+
+                    window.audioStream = stream;
+
+                    return "OK|" + window.audioContext.sampleRate;
                 } catch (err) {
                     return "ERR_NO_MIC";
                 }
             };
+
+            window.getNewPcmData = async function() {
+                if (!window.pcmChunks || window.pcmChunks.length === 0) return null;
+                const chunks = window.pcmChunks;
+                window.pcmChunks = []; 
+                let total = chunks.reduce((acc, val) => acc + val.length, 0);
+                let result = new Int16Array(total);
+                let offset = 0;
+                for (let chunk of chunks) {
+                    result.set(chunk, offset);
+                    offset += chunk.length;
+                }
+
+                const blob = new Blob([result.buffer], {type: 'application/octet-stream'});
+                return new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        resolve(reader.result.split(',')[1]); 
+                    };
+                    reader.readAsDataURL(blob);
+                });
+            };
+
             window.getLiveAudio = async function() {
                 if (!window.liveChunks || window.liveChunks.length === 0) return null;
                 const blob = new Blob(window.liveChunks, {type: window.liveRecorder.mimeType || 'audio/webm'});
@@ -109,11 +176,12 @@ def patient_detail_page(navigate) -> None:
                     reader.readAsDataURL(blob);
                 });
             };
+
             window.stopLiveRecord = function() {
-                if (window.liveRecorder && window.liveRecorder.state !== 'inactive') {
-                    window.liveRecorder.stop();
-                    window.liveRecorder.stream.getTracks().forEach(t => t.stop());
-                }
+                if (window.processor) window.processor.disconnect();
+                if (window.audioContext) window.audioContext.close();
+                if (window.liveRecorder && window.liveRecorder.state !== 'inactive') window.liveRecorder.stop();
+                if (window.audioStream) window.audioStream.getTracks().forEach(t => t.stop());
             };
         }
         '''
@@ -121,76 +189,95 @@ def patient_detail_page(navigate) -> None:
 
         # 1. AUFNAHME STARTEN
         if state['recording_field'] is None:
+
+            if not vosk_model:
+                ui.notify('Info: Live-Stream inaktiv, Whisper finalisiert am Ende.', type='warning')
+
             try:
                 res = await ui.run_javascript('return await window.startLiveRecord();', timeout=60.0)
-                if res == "ERR_NO_MIC":
+                if str(res).startswith("ERR_NO_MIC"):
                     return ui.notify('Mikrofon blockiert!', type='negative')
             except TimeoutError:
                 return ui.notify('Zeitüberschreitung beim Mikrofon.', type='warning')
 
+            mac_sample_rate = 16000
+            if res and "|" in str(res):
+                try:
+                    mac_sample_rate = int(float(str(res).split("|")[1]))
+                except:
+                    pass
+
             state['recording_field'] = state_key
             state['recording_original_text'] = state[state_key] or ''
-            ai_lock['is_busy'] = False
 
             if btn:
                 btn.props('color=negative icon=stop')
                 btn.update()
+
             ui.notify('Live-Aufnahme läuft...', type='info', timeout=3.0)
 
-            # --- Hintergrundprozess für das Live-Streaming ---
+            # --- Hintergrundprozess für das VOSK Live-Streaming ---
             async def live_transcription_loop():
                 spacer = '\n\n' if state['recording_original_text'] else ''
+                live_draft = ""
+                display_str = ""
+
+                if vosk_model:
+                    rec = vosk.KaldiRecognizer(vosk_model, mac_sample_rate)
 
                 while state['recording_field'] == state_key:
-                    await asyncio.sleep(2.0)
+                    await asyncio.sleep(0.5)
                     if state['recording_field'] != state_key:
                         break
 
-                        # === DIE AMPEL: Überspringen, wenn die KI bei einem langen Text noch rechnet! ===
-                    if ai_lock['is_busy']:
+                    if not vosk_model:
                         continue
 
-                    try:
-                        b64 = await ui.run_javascript('return await window.getLiveAudio();', timeout=5.0)
-                    except Exception:
-                        continue
+                        # MAGIE: Hier verknüpfen wir den Hintergrund-Task explizit mit deinem Browser-Fenster!
+                    with btn.client:
+                        try:
+                            b64_pcm = await ui.run_javascript('return await window.getNewPcmData();', timeout=5.0)
+                        except Exception as e:
+                            continue
 
-                    if not b64 or not b64.startswith('data:audio'): continue
+                        if b64_pcm:
+                            try:
+                                pcm_bytes = base64.b64decode(b64_pcm)
 
-                    # Ampel auf ROT setzen (KI blockieren)
-                    ai_lock['is_busy'] = True
+                                def run_vosk(b):
+                                    if rec.AcceptWaveform(b):
+                                        return True, json.loads(rec.Result()).get('text', '')
+                                    else:
+                                        return False, json.loads(rec.PartialResult()).get('partial', '')
 
-                    try:
-                        header, encoded = b64.split(",", 1)
-                        audio_data = base64.b64decode(encoded)
+                                is_final, text_res = await asyncio.to_thread(run_vosk, pcm_bytes)
 
-                        sys_tmp = tempfile.gettempdir()
-                        tmp_path = os.path.join(sys_tmp, f"live_audio_{datetime.now().timestamp()}.webm")
+                                if is_final and text_res:
+                                    live_draft += (" " if live_draft else "") + text_res
+                                    display_str = live_draft
+                                elif not is_final:
+                                    display_str = live_draft + (" " if live_draft and text_res else "") + text_res
+                                else:
+                                    display_str = live_draft
 
-                        with open(tmp_path, "wb") as f:
-                            f.write(audio_data)
+                            except Exception:
+                                pass
 
-                        segments, _ = await asyncio.to_thread(
-                            whisper_model.transcribe, tmp_path, language="de"
-                        )
-                        text = " ".join([s.text for s in segments]).strip()
+                        # Generiere den animierten Puls
+                        dots = "." * (int(datetime.now().timestamp() * 2) % 4)
 
-                        if text:
-                            state[state_key] = f"{state['recording_original_text']}{spacer}{text}"
-                            if area: area.update()
-
-                    except Exception as e:
-                        pass
-                    finally:
-                        if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                            os.remove(tmp_path)
-                        # Ampel auf GRÜN setzen (KI wieder freigeben)
-                        ai_lock['is_busy'] = False
+                        # Update des UI (Force Update)
+                        try:
+                            new_text = f"{state['recording_original_text']}{spacer}≈ {display_str} {dots}".strip()
+                            state[state_key] = new_text
+                            if area: area.value = new_text
+                        except Exception:
+                            break
 
             asyncio.create_task(live_transcription_loop())
 
 
-        # 2. AUFNAHME BEENDEN & FINALISIEREN
+        # 2. AUFNAHME BEENDEN & WHISPER (FINAL)
         elif state['recording_field'] == state_key:
             state['recording_field'] = None
 
@@ -198,17 +285,15 @@ def patient_detail_page(navigate) -> None:
                 btn.props('color=warning icon=hourglass_empty')
                 btn.update()
 
-            ui.notify('Finalisiere Text... (bitte kurz warten)', type='info', timeout=5.0)
-
-            # === WICHTIG: Warten, bis der letzte Live-Loop fertig gerechnet hat, bevor wir finalisieren ===
-            while ai_lock['is_busy']:
-                await asyncio.sleep(0.5)
+            ui.notify('Erstelle finale Whisper-Abschrift...', type='ongoing', timeout=5.0)
 
             try:
                 await ui.run_javascript('window.stopLiveRecord();')
+                await asyncio.sleep(0.5)
+
                 b64 = await ui.run_javascript('return await window.getLiveAudio();', timeout=10.0)
 
-                if b64 and b64.startswith('data:audio'):
+                if b64 and b64.startswith('data:audio') and whisper_model:
                     header, encoded = b64.split(",", 1)
                     audio_data = base64.b64decode(encoded)
 
@@ -222,15 +307,17 @@ def patient_detail_page(navigate) -> None:
                         segments, _ = await asyncio.to_thread(
                             whisper_model.transcribe, tmp_path, language="de"
                         )
-                        text = " ".join([s.text for s in segments]).strip()
+                        whisper_text = " ".join([s.text for s in segments]).strip()
                         spacer = '\n\n' if state['recording_original_text'] else ''
 
-                        if text:
-                            state[state_key] = f"{state['recording_original_text']}{spacer}{text}"
-                            if area: area.update()
+                        if whisper_text:
+                            # Überschreibt den Vosk-Entwurf mit der perfekten Whisper-Version!
+                            final_text = f"{state['recording_original_text']}{spacer}{whisper_text}".strip()
+                            state[state_key] = final_text
+                            if area: area.value = final_text
 
                     except Exception as e:
-                        print(f"Finaler Fehler: {e}")
+                        print(f"Whisper Fehler: {e}")
                     finally:
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)
@@ -238,9 +325,12 @@ def patient_detail_page(navigate) -> None:
                 print(f"JavaScript Fehler: {e}")
             finally:
                 if btn:
-                    btn.props('color=grey icon=mic')
-                    btn.update()
-                ui.notify('Erfassung abgeschlossen!', type='positive', timeout=3.0)
+                    try:
+                        btn.props('color=grey icon=mic')
+                        btn.update()
+                    except Exception:
+                        pass
+                ui.notify('Aufnahme erfolgreich gespeichert!', type='positive', timeout=3.0)
 
         else:
             ui.notify('Bitte beende zuerst die andere laufende Aufnahme!', type='warning')
@@ -389,7 +479,6 @@ def patient_detail_page(navigate) -> None:
         addr_main_in.value = item['is_main'] if item else False
         addr_dlg.open()
 
-    # ── SITZUNGS-DIALOG ──
     sess_dlg = ui.dialog()
     with sess_dlg, ui.card().classes('p-6 min-w-[700px] max-w-[800px]'):
         with ui.row().classes('w-full justify-between items-center mb-4'):

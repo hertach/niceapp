@@ -7,8 +7,10 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.18.4",
     "bcrypt>=5.0.0",
+    "certifi>=2026.2.25",
     "faster-whisper>=1.2.1",
     "nicegui>=3.8.0",
     "python-dotenv>=1.2.2",
     "sqlalchemy>=2.0.48",
+    "vosk==0.3.42",
 ]
