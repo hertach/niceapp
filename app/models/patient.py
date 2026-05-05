@@ -94,10 +94,13 @@ class PatientSession(Base):
     approach = Column(Text)  # Lösungsansatz
     protocol = Column(Text)  # Protokoll
 
-    billing_type = Column(String(100))  # Abrechnungsart
+    payment_method_id = Column(Integer, ForeignKey('payment_methods.id'), nullable=True)
+    vat_id = Column(Integer, ForeignKey('vat_settings.id'), nullable=True)
     is_paid = Column(Boolean, default=False)
     amount = Column(Float, default=0.0)
 
     is_deleted = Column(Boolean, default=False)  # Für Soft-Delete
 
     patient = relationship("Patient", back_populates="sessions")
+    payment_method = relationship("PaymentMethod", back_populates="sessions")
+    vat_setting = relationship("VATSetting", back_populates="sessions")

@@ -1,3 +1,4 @@
+# app/components/inputs.py
 import json
 from nicegui import ui
 from app.config import GERMAN_LOCALE # Wir verschieben die Config gleich
