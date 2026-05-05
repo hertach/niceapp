@@ -489,7 +489,7 @@ def patient_detail_page(navigate) -> None:
         addr_dlg.open()
 
     sess_dlg = ui.dialog()
-    with sess_dlg, ui.card().classes('p-6 min-w-[700px] max-w-[800px]'):
+    with sess_dlg, ui.card().classes('p-6 min-w-[1100px] max-w-[1300px]'):
         with ui.row().classes('w-full justify-between items-center mb-4'):
             ui.label('Sitzungsdetails').classes('text-lg font-bold')
             ui.button(icon='close', on_click=sess_dlg.close).props('flat round dense')
