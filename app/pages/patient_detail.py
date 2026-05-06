@@ -798,7 +798,7 @@ def patient_detail_page(navigate) -> None:
                             header_text = f"{date_str}{time_str} | CHF {s.amount:.2f} ({paid_str})"
 
                             with ui.expansion(header_text, icon='event').classes(
-                                    'w-full max-w-4xl shadow-sm border border-slate-200 mb-2 bg-white rounded'):
+                                    'w-full max-w-4xl shadow-sm border border-slate-200 mb-0 mt-0 bg-white rounded'):
                                 with ui.column().classes('w-full p-4 gap-4'):
                                     if s.issue:
                                         with ui.column().classes('gap-1'):
