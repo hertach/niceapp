@@ -655,17 +655,20 @@ def patient_detail_page(navigate) -> None:
                     btn_props = 'flat align="left" no-caps'
                     ui.button('Personalien', icon='badge', on_click=lambda: set_tab('Personalien')).classes(
                         get_btn_class('Personalien')).props(btn_props)
-                    btn_k = ui.button('Kontaktangaben', icon='contact_mail',
+                    btn_contacts = ui.button('Kontaktangaben', icon='contact_mail',
                                       on_click=lambda: set_tab('Kontaktangaben')).classes(
                         get_btn_class('Kontaktangaben')).props(btn_props)
-                    btn_s = ui.button('Sitzungen', icon='event', on_click=lambda: set_tab('Sitzungen')).classes(
+                    btn_sessions = ui.button('Sitzungen', icon='event', on_click=lambda: set_tab('Sitzungen')).classes(
                         get_btn_class('Sitzungen')).props(btn_props)
-                    btn_a = ui.button('Abrechnungen', icon='receipt', on_click=lambda: set_tab('Abrechnungen')).classes(
+                    btn_payments = ui.button('Abrechnungen', icon='receipt', on_click=lambda: set_tab('Abrechnungen')).classes(
                         get_btn_class('Abrechnungen')).props(btn_props)
+                    btn_files = ui.button('Dateien', icon='attach_file', on_click=lambda: set_tab('Abrechnungen')).classes(
+                        get_btn_class('Dateien')).props(btn_props)
                     if not patient_id:
-                        btn_k.disable()
-                        btn_s.disable()
-                        btn_a.disable()
+                        btn_contacts.disable()
+                        btn_sessions.disable()
+                        btn_payments.disable()
+                        btn_files.disable()
 
             menu_col()
 
@@ -829,6 +832,9 @@ def patient_detail_page(navigate) -> None:
                                                 'outline color="primary" size="sm"')
 
                     elif state['active_tab'] == 'Abrechnungen':
+                        ui.label('Abrechnungen kommen hier hin...').classes('text-lg text-slate-500')
+
+                    elif state['active_tab'] == 'Dateien':
                         ui.label('Abrechnungen kommen hier hin...').classes('text-lg text-slate-500')
 
             main_content()
