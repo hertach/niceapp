@@ -11,7 +11,7 @@ from nicegui import ui, app as nicegui_app
 from sqlalchemy.orm import joinedload
 from app.core.database import get_session
 from app.models.patient import Patient, PatientInsurance, PatientAddress, PatientPhone, PatientEmail, PatientSession
-from app.models.finance_setting import VATSetting, PaymentMethod  # <-- WICHTIG: Neue Imports
+from app.models.finance_setting import VATSetting, PaymentMethod
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 
@@ -58,8 +58,9 @@ def patient_detail_page(navigate) -> None:
         'sessions': [],
         'sess_id': None, 'sess_date': '', 'sess_time_from': '', 'sess_time_to': '',
         'sess_issue': '', 'sess_approach': '', 'sess_protocol': '',
-        'sess_payment_method_id': None, 'sess_vat_id': None,  # <-- NEU: IDs statt String
+        'sess_payment_method_id': None, 'sess_vat_id': None,
         'sess_is_paid': False, 'sess_amount': 0.0,
+        'billing_filter': 'Alle',
         'recording_field': None,
         'recording_original_text': ''
     }
@@ -507,14 +508,13 @@ def patient_detail_page(navigate) -> None:
 
         ui.separator().classes('my-4')
 
-        # ── NEU: Dynamische Dropdowns für Bezahlmethode und MwSt ──
         with ui.row().classes('w-full gap-4 mb-4 items-center'):
             pm_select = ui.select({}, label='Bezahlmethode').bind_value(state, 'sess_payment_method_id').classes(
                 'flex-1').props('outlined dense')
             vat_select = ui.select({}, label='MwSt-Satz').bind_value(state, 'sess_vat_id').classes('w-[180px]').props(
                 'outlined dense')
 
-            ui.input('Betrag (CHF)').bind_value(state, 'sess_amount').classes('w-[120px]').props(
+            ui.input('Betrag (Netto in CHF)').bind_value(state, 'sess_amount').classes('w-[180px]').props(
                 'outlined dense type="number" step="0.05"')
             ui.checkbox('Bezahlt').bind_value(state, 'sess_is_paid')
 
@@ -534,7 +534,6 @@ def patient_detail_page(navigate) -> None:
                 s.approach = state['sess_approach']
                 s.protocol = state['sess_protocol']
 
-                # Zuweisung der neuen Datenbank-Schlüssel[cite: 21, 23]
                 s.payment_method_id = state['sess_payment_method_id']
                 s.vat_id = state['sess_vat_id']
                 s.is_paid = state['sess_is_paid']
@@ -553,7 +552,6 @@ def patient_detail_page(navigate) -> None:
             ui.button('Speichern', on_click=save_session).props('unelevated color="primary"')
 
     def open_session(s=None):
-        # Dynamisches Laden der Dropdown-Daten aus den Settings[cite: 22]
         with get_session() as db:
             active_pms = db.query(PaymentMethod).filter_by(is_active=True).all()
             pm_options = {pm.id: pm.title for pm in active_pms}
@@ -565,7 +563,6 @@ def patient_detail_page(navigate) -> None:
                 if not v.end_date or v.end_date >= today:
                     vat_options[v.id] = f"{v.description} ({v.rate}%)"
 
-            # Falls wir eine Sitzung bearbeiten, die alte (inaktive) Werte hat, fügen wir diese als Option hinzu, damit es nicht leer bleibt.
             if s:
                 if s.payment_method_id and s.payment_method_id not in pm_options:
                     pm_options[s.payment_method_id] = f"Archiviert (ID {s.payment_method_id})"
@@ -656,13 +653,14 @@ def patient_detail_page(navigate) -> None:
                     ui.button('Personalien', icon='badge', on_click=lambda: set_tab('Personalien')).classes(
                         get_btn_class('Personalien')).props(btn_props)
                     btn_contacts = ui.button('Kontaktangaben', icon='contact_mail',
-                                      on_click=lambda: set_tab('Kontaktangaben')).classes(
+                                             on_click=lambda: set_tab('Kontaktangaben')).classes(
                         get_btn_class('Kontaktangaben')).props(btn_props)
                     btn_sessions = ui.button('Sitzungen', icon='event', on_click=lambda: set_tab('Sitzungen')).classes(
                         get_btn_class('Sitzungen')).props(btn_props)
-                    btn_payments = ui.button('Abrechnungen', icon='receipt', on_click=lambda: set_tab('Abrechnungen')).classes(
+                    btn_payments = ui.button('Abrechnungen', icon='receipt',
+                                             on_click=lambda: set_tab('Abrechnungen')).classes(
                         get_btn_class('Abrechnungen')).props(btn_props)
-                    btn_files = ui.button('Dateien', icon='attach_file', on_click=lambda: set_tab('Abrechnungen')).classes(
+                    btn_files = ui.button('Dateien', icon='attach_file', on_click=lambda: set_tab('Dateien')).classes(
                         get_btn_class('Dateien')).props(btn_props)
                     if not patient_id:
                         btn_contacts.disable()
@@ -774,7 +772,6 @@ def patient_detail_page(navigate) -> None:
 
                     elif state['active_tab'] == 'Sitzungen':
                         with get_session() as session:
-                            # Wir fragen direkt die PatientSession ab und laden die Relationen mit
                             sitzungen = session.query(PatientSession).options(
                                 joinedload(PatientSession.payment_method),
                                 joinedload(PatientSession.vat_setting)
@@ -798,7 +795,10 @@ def patient_detail_page(navigate) -> None:
                             time_str = f" | {s.time_from} - {s.time_to} Uhr" if (s.time_from and s.time_to) else ""
                             paid_str = "Bezahlt" if s.is_paid else "Offen"
 
-                            header_text = f"{date_str}{time_str} | CHF {s.amount:.2f} ({paid_str})"
+                            vat_rate = s.vat_setting.rate if s.vat_setting else 0.0
+                            gross_amount = s.amount * (1 + vat_rate / 100)
+
+                            header_text = f"{date_str}{time_str} | CHF {gross_amount:.2f} ({paid_str})"
 
                             with ui.expansion(header_text, icon='event').classes(
                                     'w-full max-w-4xl shadow-sm border border-slate-200 mb-0 mt-0 bg-white rounded'):
@@ -818,7 +818,6 @@ def patient_detail_page(navigate) -> None:
 
                                     ui.separator()
                                     with ui.row().classes('w-full justify-between items-center'):
-                                        # ── NEU: Aktualisierte Darstellung in der Historie ──
                                         pm_title = s.payment_method.title if s.payment_method else "Nicht definiert"
                                         vat_desc = f"{s.vat_setting.rate}% MwSt" if s.vat_setting else "Keine MwSt"
                                         ui.label(f"Abrechnung: {pm_title} | {vat_desc}").classes(
@@ -832,9 +831,181 @@ def patient_detail_page(navigate) -> None:
                                                 'outline color="primary" size="sm"')
 
                     elif state['active_tab'] == 'Abrechnungen':
-                        ui.label('Abrechnungen kommen hier hin...').classes('text-lg text-slate-500')
+                        with get_session() as session:
+                            sitzungen = session.query(PatientSession).options(
+                                joinedload(PatientSession.payment_method),
+                                joinedload(PatientSession.vat_setting)
+                            ).filter_by(
+                                patient_id=patient_id,
+                                is_deleted=False
+                            ).order_by(PatientSession.date.desc()).all()
+
+                            billing_rows = []
+                            for s in sitzungen:
+                                if state['billing_filter'] == 'Offen' and s.is_paid:
+                                    continue
+                                if state['billing_filter'] == 'Bezahlt' and not s.is_paid:
+                                    continue
+
+                                pm_title = s.payment_method.title if s.payment_method else "Nicht definiert"
+                                vat_rate = s.vat_setting.rate if s.vat_setting else 0.0
+                                vat_desc = f"{vat_rate}%"
+
+                                amount_incl_vat = s.amount * (1 + (vat_rate / 100))
+
+                                billing_rows.append({
+                                    'id': s.id,
+                                    'date': s.date.strftime('%d.%m.%Y'),
+                                    'amount_net': s.amount,
+                                    'amount_gross': amount_incl_vat,
+                                    'amount_str': f"CHF {amount_incl_vat:.2f}",
+                                    'vat': vat_desc,
+                                    'status': 'Bezahlt' if s.is_paid else 'Offen',
+                                    'is_paid': s.is_paid,
+                                    'payment_method': pm_title if s.is_paid else '-',
+                                })
+
+                        with ui.column().classes('w-full max-w-4xl gap-6'):
+                            with ui.row().classes('w-full justify-between items-center mb-2 gap-4'):
+                                ui.label('Abrechnungen & Belege').classes(
+                                    'text-[20px] font-medium text-[#1e3a5f] flex-1')
+
+                                with ui.row().classes('gap-2 items-center'):
+                                    def set_filter(f):
+                                        state['billing_filter'] = f
+                                        main_content.refresh()
+
+                                    ui.button('Alle', on_click=lambda: set_filter('Alle')).props(
+                                        'unelevated color="primary"' if state[
+                                                                            'billing_filter'] == 'Alle' else 'outline color="grey"'
+                                    )
+                                    ui.button('Offen', on_click=lambda: set_filter('Offen')).props(
+                                        'unelevated color="negative"' if state[
+                                                                             'billing_filter'] == 'Offen' else 'outline color="grey"'
+                                    )
+                                    ui.button('Bezahlt', on_click=lambda: set_filter('Bezahlt')).props(
+                                        'unelevated color="positive"' if state[
+                                                                             'billing_filter'] == 'Bezahlt' else 'outline color="grey"'
+                                    )
+
+                                def print_summary():
+                                    print(f"\n--- ZUSAMMENZUG ALLER SITZUNGEN (Filter: {state['billing_filter']}) ---")
+                                    print(f"Patient ID: {patient_id}")
+                                    total_net = 0
+                                    total_gross = 0
+                                    for r in billing_rows:
+                                        total_net += r['amount_net']
+                                        total_gross += r['amount_gross']
+                                        print(
+                                            f"[{r['date']}] {r['status']} - Netto: CHF {r['amount_net']:.2f} | Brutto: CHF {r['amount_gross']:.2f}")
+                                    print(f"-----------------------------------")
+                                    print(f"Gesamt Netto: CHF {total_net:.2f}")
+                                    print(f"Gesamt Brutto (inkl. MwSt): CHF {total_gross:.2f}")
+                                    print(f"-----------------------------------\n")
+                                    ui.notify('Zusammenzug im Log ausgegeben.', type='info')
+
+                                def print_invoice():
+                                    selected_rows = billing_table.selected
+                                    unpaid_selected = [r for r in selected_rows if not r['is_paid']]
+
+                                    if not unpaid_selected:
+                                        ui.notify('Bitte markieren Sie mindestens eine offene Sitzung in der Tabelle.',
+                                                  type='warning')
+                                        return
+
+                                    session_ids = [r['id'] for r in unpaid_selected]
+                                    total_gross = sum(r['amount_gross'] for r in unpaid_selected)
+                                    print(f"\n--- RECHNUNG GEDRUCKT ---")
+                                    print(f"Patient ID: {patient_id}")
+                                    print(f"Sitzungs-IDs: {session_ids}")
+                                    print(f"Total (inkl. MwSt): CHF {total_gross:.2f}")
+                                    print(f"-------------------------\n")
+
+                                    ui.notify(f'Rechnung für {len(unpaid_selected)} Sitzung(en) gedruckt (siehe Log).',
+                                              type='positive')
+                                    billing_table.selected.clear()
+                                    billing_table.update()
+
+                                ui.button('Zusammenzug', icon='summarize', on_click=print_summary).props(
+                                    'outline').classes('text-[#0078d4]')
+                                ui.button('Rechnung erstellen', icon='receipt_long', on_click=print_invoice).props(
+                                    'unelevated').classes('bg-[#0078d4] text-white')
+
+                            if not billing_rows:
+                                ui.label('Es wurden keine Sitzungen für den gewählten Filter gefunden.').classes(
+                                    'text-slate-400 italic')
+                            else:
+                                billing_columns = [
+                                    {'name': 'date', 'label': 'Datum', 'field': 'date', 'align': 'left',
+                                     'sortable': True},
+                                    {'name': 'amount_str', 'label': 'Betrag (inkl. MwSt)', 'field': 'amount_str',
+                                     'align': 'right'},
+                                    {'name': 'vat', 'label': 'MwSt', 'field': 'vat', 'align': 'right'},
+                                    {'name': 'status', 'label': 'Status', 'field': 'status', 'align': 'center'},
+                                    {'name': 'payment_method', 'label': 'Bezahlmethode', 'field': 'payment_method',
+                                     'align': 'left'},
+                                    {'name': 'actions', 'label': 'Aktionen', 'field': 'id', 'align': 'right'},
+                                ]
+
+                                billing_table = ui.table(
+                                    columns=billing_columns,
+                                    rows=billing_rows,
+                                    row_key='id',
+                                    selection='multiple'
+                                ).classes('w-full shadow-sm border border-slate-200 bg-white')
+
+                                billing_table.add_slot('body-cell-actions', r'''
+                                    <q-td :props="props">
+                                        <div class="row items-center justify-end no-wrap gap-1">
+                                            <q-btn v-if="props.row.is_paid" flat round dense icon="print" color="primary" @click="$parent.$emit('print_receipt', props.row)">
+                                                <q-tooltip>Quittung drucken</q-tooltip>
+                                            </q-btn>
+                                            <q-btn v-if="!props.row.is_paid" flat round dense icon="check_circle" color="positive" @click="$parent.$emit('mark_paid', props.row.id)">
+                                                <q-tooltip>Als bezahlt markieren</q-tooltip>
+                                            </q-btn>
+                                        </div>
+                                    </q-td>
+                                ''')
+
+                                # ── NEU: invisible Klasse statt v-if für feste Spaltenbreite ──
+                                billing_table.add_slot('body-selection', r'''
+                                    <q-td :auto-width="true">
+                                        <q-checkbox :class="{ 'invisible': props.row.is_paid }" v-model="props.selected" color="primary" />
+                                    </q-td>
+                                ''')
+
+                                def print_receipt(msg):
+                                    row = msg.args
+                                    print(f"\n--- QUITTUNG GEDRUCKT ---")
+                                    print(f"Sitzung ID: {row['id']}")
+                                    print(f"Betrag (inkl. MwSt): {row['amount_str']}")
+                                    print(f"Bezahlt mit: {row['payment_method']}")
+                                    print(f"-------------------------\n")
+                                    ui.notify(f"Quittung für Sitzung vom {row['date']} gedruckt (siehe Log).",
+                                              type='info')
+
+                                def mark_as_paid(msg):
+                                    sess_id = msg.args
+                                    with get_session() as session:
+                                        s = session.query(PatientSession).filter_by(id=sess_id).first()
+                                        if s:
+                                            s.is_paid = True
+                                            session.commit()
+                                    ui.notify('Sitzung als bezahlt markiert.', type='positive')
+                                    main_content.refresh()
+
+                                billing_table.on('print_receipt', print_receipt)
+                                billing_table.on('mark_paid', mark_as_paid)
+
+                                billing_table.add_slot('body-row', r'''
+                                    <q-tr :props="props" :class="props.row.is_paid ? 'bg-slate-50 text-slate-500' : ''">
+                                        <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                                            {{ col.value }}
+                                        </q-td>
+                                    </q-tr>
+                                ''')
 
                     elif state['active_tab'] == 'Dateien':
-                        ui.label('Abrechnungen kommen hier hin...').classes('text-lg text-slate-500')
+                        ui.label('Dateien kommen hier hin...').classes('text-lg text-slate-500')
 
             main_content()
