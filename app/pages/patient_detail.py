@@ -6,10 +6,12 @@ import asyncio
 import json
 import urllib.request
 import zipfile
-from datetime import datetime
+from datetime import datetime, date
 from nicegui import ui, app as nicegui_app
+from sqlalchemy.orm import joinedload
 from app.core.database import get_session
 from app.models.patient import Patient, PatientInsurance, PatientAddress, PatientPhone, PatientEmail, PatientSession
+from app.models.finance_setting import VATSetting, PaymentMethod  # <-- WICHTIG: Neue Imports
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 
@@ -56,7 +58,8 @@ def patient_detail_page(navigate) -> None:
         'sessions': [],
         'sess_id': None, 'sess_date': '', 'sess_time_from': '', 'sess_time_to': '',
         'sess_issue': '', 'sess_approach': '', 'sess_protocol': '',
-        'sess_billing_type': 'Selbstzahler', 'sess_is_paid': False, 'sess_amount': 0.0,
+        'sess_payment_method_id': None, 'sess_vat_id': None,  # <-- NEU: IDs statt String
+        'sess_is_paid': False, 'sess_amount': 0.0,
         'recording_field': None,
         'recording_original_text': ''
     }
@@ -189,9 +192,7 @@ def patient_detail_page(navigate) -> None:
         '''
         await ui.run_javascript(js_setup)
 
-        # 1. AUFNAHME STARTEN
         if state['recording_field'] is None:
-
             if not vosk_model:
                 ui.notify('Info: Live-Stream inaktiv, Whisper finalisiert am Ende.', type='warning')
 
@@ -218,7 +219,6 @@ def patient_detail_page(navigate) -> None:
 
             ui.notify('Live-Aufnahme läuft...', type='info', timeout=3.0)
 
-            # --- Hintergrundprozess für das VOSK Live-Streaming ---
             async def live_transcription_loop():
                 with get_session() as session:
                     settings = session.query(AppSetting).first()
@@ -242,7 +242,6 @@ def patient_detail_page(navigate) -> None:
                     if not vosk_model:
                         continue
 
-                        # MAGIE: Hier verknüpfen wir den Hintergrund-Task explizit mit deinem Browser-Fenster!
                     with btn.client:
                         try:
                             b64_pcm = await ui.run_javascript('return await window.getNewPcmData();', timeout=5.0)
@@ -272,10 +271,7 @@ def patient_detail_page(navigate) -> None:
                             except Exception:
                                 pass
 
-                        # Generiere den animierten Puls
                         dots = "." * (int(datetime.now().timestamp() * 2) % 4)
-
-                        # Update des UI (Force Update)
                         try:
                             new_text = f"{state['recording_original_text']}{spacer}≈ {display_str} {dots}".strip()
                             state[state_key] = new_text
@@ -285,8 +281,6 @@ def patient_detail_page(navigate) -> None:
 
             asyncio.create_task(live_transcription_loop())
 
-
-        # 2. AUFNAHME BEENDEN & WHISPER (FINAL)
         elif state['recording_field'] == state_key:
             state['recording_field'] = None
 
@@ -320,7 +314,6 @@ def patient_detail_page(navigate) -> None:
                         spacer = '\n\n' if state['recording_original_text'] else ''
 
                         if whisper_text:
-                            # Überschreibt den Vosk-Entwurf mit der perfekten Whisper-Version!
                             final_text = f"{state['recording_original_text']}{spacer}{whisper_text}".strip()
                             state[state_key] = final_text
                             if area: area.value = final_text
@@ -363,8 +356,8 @@ def patient_detail_page(navigate) -> None:
                     session.add(PatientInsurance(patient_id=patient_id, name=ins_name_in.value,
                                                  insurance_number=ins_num_in.value, is_deleted=False))
                 session.commit()
-            ins_dlg.close();
-            load_data();
+            ins_dlg.close()
+            load_data()
             main_content.refresh()
 
         with ui.row().classes('w-full justify-end gap-2'):
@@ -398,8 +391,8 @@ def patient_detail_page(navigate) -> None:
                     session.add(PatientPhone(patient_id=patient_id, number=phone_num_in.value, type=phone_type_in.value,
                                              is_main=phone_main_in.value))
                 session.commit()
-            phone_dlg.close();
-            load_data();
+            phone_dlg.close()
+            load_data()
             main_content.refresh()
 
         with ui.row().classes('w-full justify-end gap-2'):
@@ -434,8 +427,8 @@ def patient_detail_page(navigate) -> None:
                     session.add(PatientEmail(patient_id=patient_id, email=email_val_in.value, type=email_type_in.value,
                                              is_main=email_main_in.value))
                 session.commit()
-            email_dlg.close();
-            load_data();
+            email_dlg.close()
+            load_data()
             main_content.refresh()
 
         with ui.row().classes('w-full justify-end gap-2'):
@@ -472,8 +465,8 @@ def patient_detail_page(navigate) -> None:
                         PatientAddress(patient_id=patient_id, street=addr_st_in.value, zip_code=addr_zip_in.value,
                                        city=addr_city_in.value, is_main=addr_main_in.value))
                 session.commit()
-            addr_dlg.close();
-            load_data();
+            addr_dlg.close()
+            load_data()
             main_content.refresh()
 
         with ui.row().classes('w-full justify-end gap-2'):
@@ -514,11 +507,14 @@ def patient_detail_page(navigate) -> None:
 
         ui.separator().classes('my-4')
 
+        # ── NEU: Dynamische Dropdowns für Bezahlmethode und MwSt ──
         with ui.row().classes('w-full gap-4 mb-4 items-center'):
-            ui.select(['Selbstzahler', 'Zusatzversicherung', 'Grundversicherung', 'IV'],
-                      label='Abrechnungsart').bind_value(state, 'sess_billing_type').classes('flex-1').props(
+            pm_select = ui.select({}, label='Bezahlmethode').bind_value(state, 'sess_payment_method_id').classes(
+                'flex-1').props('outlined dense')
+            vat_select = ui.select({}, label='MwSt-Satz').bind_value(state, 'sess_vat_id').classes('w-[180px]').props(
                 'outlined dense')
-            ui.input('Betrag (CHF)').bind_value(state, 'sess_amount').classes('w-[150px]').props(
+
+            ui.input('Betrag (CHF)').bind_value(state, 'sess_amount').classes('w-[120px]').props(
                 'outlined dense type="number" step="0.05"')
             ui.checkbox('Bezahlt').bind_value(state, 'sess_is_paid')
 
@@ -537,7 +533,10 @@ def patient_detail_page(navigate) -> None:
                 s.issue = state['sess_issue']
                 s.approach = state['sess_approach']
                 s.protocol = state['sess_protocol']
-                s.billing_type = state['sess_billing_type']
+
+                # Zuweisung der neuen Datenbank-Schlüssel[cite: 21, 23]
+                s.payment_method_id = state['sess_payment_method_id']
+                s.vat_id = state['sess_vat_id']
                 s.is_paid = state['sess_is_paid']
 
                 try:
@@ -546,14 +545,38 @@ def patient_detail_page(navigate) -> None:
                     s.amount = 0.0
 
                 session.commit()
-            sess_dlg.close();
-            load_data();
+            sess_dlg.close()
+            load_data()
             main_content.refresh()
 
         with ui.row().classes('w-full justify-end gap-2'):
             ui.button('Speichern', on_click=save_session).props('unelevated color="primary"')
 
     def open_session(s=None):
+        # Dynamisches Laden der Dropdown-Daten aus den Settings[cite: 22]
+        with get_session() as db:
+            active_pms = db.query(PaymentMethod).filter_by(is_active=True).all()
+            pm_options = {pm.id: pm.title for pm in active_pms}
+
+            today = date.today()
+            active_vats = db.query(VATSetting).filter_by(is_active=True).all()
+            vat_options = {}
+            for v in active_vats:
+                if not v.end_date or v.end_date >= today:
+                    vat_options[v.id] = f"{v.description} ({v.rate}%)"
+
+            # Falls wir eine Sitzung bearbeiten, die alte (inaktive) Werte hat, fügen wir diese als Option hinzu, damit es nicht leer bleibt.
+            if s:
+                if s.payment_method_id and s.payment_method_id not in pm_options:
+                    pm_options[s.payment_method_id] = f"Archiviert (ID {s.payment_method_id})"
+                if s.vat_id and s.vat_id not in vat_options:
+                    vat_options[s.vat_id] = f"Archiviert (ID {s.vat_id})"
+
+            pm_select.options = pm_options
+            vat_select.options = vat_options
+            pm_select.update()
+            vat_select.update()
+
         state.update({
             'sess_id': getattr(s, 'id', None) if s else None,
             'sess_date': s.date.strftime('%Y-%m-%d') if s and getattr(s, 'date', None) else datetime.now().strftime(
@@ -563,7 +586,8 @@ def patient_detail_page(navigate) -> None:
             'sess_issue': getattr(s, 'issue', ''),
             'sess_approach': getattr(s, 'approach', ''),
             'sess_protocol': getattr(s, 'protocol', ''),
-            'sess_billing_type': getattr(s, 'billing_type', 'Selbstzahler'),
+            'sess_payment_method_id': getattr(s, 'payment_method_id', None),
+            'sess_vat_id': getattr(s, 'vat_id', None),
             'sess_is_paid': getattr(s, 'is_paid', False),
             'sess_amount': getattr(s, 'amount', 0.0)
         })
@@ -573,14 +597,14 @@ def patient_detail_page(navigate) -> None:
         with get_session() as session:
             item = session.query(model_class).filter_by(id=item_id).first()
             if item: session.delete(item); session.commit()
-        load_data();
+        load_data()
         main_content.refresh()
 
     def soft_delete(model_class, item_id):
         with get_session() as session:
             item = session.query(model_class).filter_by(id=item_id).first()
             if item: item.is_deleted = True; session.commit()
-        load_data();
+        load_data()
         main_content.refresh()
 
     def save_basic():
@@ -639,8 +663,8 @@ def patient_detail_page(navigate) -> None:
                     btn_a = ui.button('Abrechnungen', icon='receipt', on_click=lambda: set_tab('Abrechnungen')).classes(
                         get_btn_class('Abrechnungen')).props(btn_props)
                     if not patient_id:
-                        btn_k.disable();
-                        btn_s.disable();
+                        btn_k.disable()
+                        btn_s.disable()
                         btn_a.disable()
 
             menu_col()
@@ -747,9 +771,15 @@ def patient_detail_page(navigate) -> None:
 
                     elif state['active_tab'] == 'Sitzungen':
                         with get_session() as session:
-                            p = session.query(Patient).filter_by(id=patient_id).first()
-                            sitzungen = [s for s in getattr(p, 'sessions', []) if
-                                         not getattr(s, 'is_deleted', False)] if p else []
+                            # Wir fragen direkt die PatientSession ab und laden die Relationen mit
+                            sitzungen = session.query(PatientSession).options(
+                                joinedload(PatientSession.payment_method),
+                                joinedload(PatientSession.vat_setting)
+                            ).filter_by(
+                                patient_id=patient_id,
+                                is_deleted=False
+                            ).all()
+
                             sitzungen.sort(key=lambda x: x.date, reverse=True)
 
                         with ui.row().classes('w-full max-w-4xl justify-between items-center mb-6'):
@@ -785,7 +815,12 @@ def patient_detail_page(navigate) -> None:
 
                                     ui.separator()
                                     with ui.row().classes('w-full justify-between items-center'):
-                                        ui.label(f"Abrechnungsart: {s.billing_type}").classes('text-xs text-slate-400')
+                                        # ── NEU: Aktualisierte Darstellung in der Historie ──
+                                        pm_title = s.payment_method.title if s.payment_method else "Nicht definiert"
+                                        vat_desc = f"{s.vat_setting.rate}% MwSt" if s.vat_setting else "Keine MwSt"
+                                        ui.label(f"Abrechnung: {pm_title} | {vat_desc}").classes(
+                                            'text-xs text-slate-500 font-medium')
+
                                         with ui.row().classes('gap-2'):
                                             ui.button('Löschen',
                                                       on_click=lambda idx=s.id: soft_delete(PatientSession, idx)).props(
