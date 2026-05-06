@@ -15,6 +15,8 @@ Eine modulare Single-Page-Application (SPA) gebaut mit **NiceGUI 2.x**, **SQLAlc
 | Passwort-Hashing | bcrypt |
 | Package Manager | uv |
 | Konfiguration | python-dotenv |
+|Spracherkennung (Live)| Vosk (WebRTC / PCM Audio Streaming)
+|Spracherkennung (Final)| faster-whisper (lokales KI-Modell)
 
 ---
 
@@ -79,6 +81,10 @@ alembic upgrade head
 # 4. App starten
 uv run python main.py
 ```
+### Hinweis zu Audio-Modellen:
+- Beim ersten Aufruf einer Patientenakte lädt die Applikation automatisch 
+- das deutsche Vosk-Modell (~45 MB) herunter und entpackt es.
+- Faster-Whisper lädt sein Modell ("small") beim ersten Start via HuggingFace herunter.
 
 ---
 
@@ -151,19 +157,28 @@ Seiten werden in `PAGES: dict[str, Callable]` registriert. `navigate()` übernim
 ## Datenmodell
 
 ```
-User           → Login, Rolle, aktiv/inaktiv
-Role           → Rollenname, Beschreibung
-MenuItem       → Label, Icon, Pfad, Rollen (kommagetrennt), Sortierung
+Patient            → Stammdaten (Vorname, Nachname, Geburtsdatum, Geschlecht, Notizen)
+PatientInsurance   → Krankenkassen-Historie (Name, Versichertennummer, aktiv/inaktiv)
+PatientAddress     → Postadressen (inkl. Hauptwohnsitz-Flag)
+PatientPhone       → Telefonnummern (Privat, Geschäftlich, Mobil)
+PatientEmail       → E-Mail-Adressen (inkl. Hauptadressen-Flag)
 
-Patient        → Personalien, Kontakt, Adresse, Versicherung, Notizen
-Appointment    → Patient, Therapeut, Start/Ende, Typ, Status
-SessionNote    → Termin, Inhalt, nächste Schritte
-Invoice        → Patient, Rechnungsnummer, Datum, Status, Währung, MwSt
-InvoiceItem    → Rechnung, Beschreibung, Menge, Einzelpreis
+PatientSession     → Sitzungsprotokolle (Datum, Zeit, Anliegen, Lösungsansatz, Protokoll)
+                     inkl. Abrechnungsdaten (Netto-Betrag, is_paid Status)
+VATSetting         → MwSt-Sätze (Historisierbar, z.B. 0% für Therapie, 8.1% für Coaching)
+PaymentMethod      → Bezahlmethoden (z.B. Bar, Twint, Rechnung)
+AppSetting         → Globale Einstellungen (z.B. Streaming-Intervalle für KI)
 ```
 
 **MwSt Schweiz:** Psychotherapeutische Leistungen sind nach Art. 21 MWSTG mehrwertsteuerbefreit → `vat_rate` defaultmässig `0.0`.
 
+---
+## 🎙️ KI-Spracherkennung (Hybrid-Transkription)
+
+Die Applikation nutzt ein hybrides System zur Spracherkennung für Sitzungsprotokolle, um maximale Effizienz ohne externe Cloud-APIs (Datenschutz!) zu gewährleisten:
+* **Vosk (Live-Streaming):** Nimmt Audio über den Browser (`MediaRecorder API`) auf, streamt PCM-Daten via JavaScript an Python und liefert eine Echtzeit-Vorschau in das Textfeld. (Erfordert das `vosk-model-small-de-0.15` Modell).
+* **Faster-Whisper (Final):** Sobald die Aufnahme beendet wird, transkribiert das Whisper-Modell (`small`) die gesamte Audiodatei für ein hochpräzises Endergebnis, inklusive korrekter Interpunktion.
+* **Datenschutz:** Alle Audio-Verarbeitungen passieren zu 100% lokal auf dem Server.
 ---
 
 ## Admin-Bereich
@@ -226,14 +241,14 @@ app_logger.error("Datenbankverbindung fehlgeschlagen!")
 ## Roadmap
 
 - [x] Auth & Session
-- [x] Rollenbasiertes Menü aus DB
-- [x] SPA-Navigation (kein Browser-Reload)
-- [x] Admin: Benutzer, Rollen, Menüpunkte
-- [x] Dashboard mit Statistik-Karten
-- [x] .env Konfiguration
-- [x] Alembic Migrationen
-- [x] Patientenverwaltung (CRUD)
-- [ ] Terminkalender
-- [ ] Sitzungsprotokolle
-- [ ] Rechnungen & PDF-Export
-- [ ] AI-gestützte Gesprächsführung
+- [x] Rollenbasiertes Menü aus DB[cite: 25]
+- [x] SPA-Navigation (kein Browser-Reload)[cite: 25]
+- [x] Admin: Benutzer, Rollen, Menüpunkte[cite: 25]
+- [x] Dashboard mit Statistik-Karten[cite: 25]
+- [x] .env Konfiguration[cite: 25]
+- [x] Alembic Migrationen[cite: 25]
+- [x] Patientenverwaltung (CRUD inkl. relationaler Kontaktdaten & Versicherungen)
+- [x] Sitzungsprotokolle (inkl. lokaler KI-Spracherkennung)
+- [x] Abrechnungsmodul (Filter, dynamische MwSt-Aufschläge, Quittungen & Zusammenzüge)
+- [ ] Terminkalender[cite: 25]
+- [ ] Rechnungen als PDF-Export (Druck & Zusammenzug existieren bereits als Log)
