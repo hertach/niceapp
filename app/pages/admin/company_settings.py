@@ -39,15 +39,11 @@ def company_settings_page() -> None:
             else "./data/uploads/logos"
         )
 
-        TEMPLATE_DIR = (
-            app_settings.upload_path_templates
-            if app_settings and app_settings.upload_path_templates
-            else "./data/uploads/templates"
-        )
+
 
     # Ordner sicherstellen
     os.makedirs(LOGO_DIR, exist_ok=True)
-    os.makedirs(TEMPLATE_DIR, exist_ok=True)
+
 
     def load_company_data():
         with get_session() as session:
@@ -135,9 +131,6 @@ def company_settings_page() -> None:
                 return await data  # <-- HIER WIRD AUF DIE BYTES GEWARTET
             return data
 
-        print(f"\n--- DEBUG UPLOAD EVENT ---")
-        print(f"Attribute im Event: {dir(e)}")
-        print(f"--------------------------\n")
         return b""
 
     # WICHTIG: Die Funktion muss jetzt 'async def' sein!
@@ -244,105 +237,3 @@ def company_settings_page() -> None:
                     ui.button(
                         "Stammdaten speichern", icon="save", on_click=save_company_data
                     ).props("unelevated").classes("bg-[#0078d4] text-white")
-
-            with ui.card().classes("w-full p-6 shadow-sm border border-slate-200"):
-                ui.label("Vorlagenverwaltung (.docx / .odt)").classes(
-                    "text-lg font-bold text-[#1e3a5f] border-b border-gray-100 pb-2 mb-2"
-                )
-
-                template_types = ["Rechnung", "Quittung", "Mahnung", "Begleitbrief"]
-                selected_type = (
-                    ui.select(template_types, label="Zuweisungstyp für Upload")
-                    .classes("w-full max-w-[300px] mb-2")
-                    .props("outlined dense")
-                )
-
-                @ui.refreshable
-                def template_list():
-                    with get_session() as session:
-                        templates = (
-                            session.query(DocumentTemplate)
-                            .order_by(DocumentTemplate.doc_type)
-                            .all()
-                        )
-
-                    if not templates:
-                        ui.label("Noch keine Vorlagen hochgeladen.").classes(
-                            "text-gray-400 italic"
-                        )
-                    else:
-                        with ui.column().classes("w-full gap-2 mt-2"):
-                            for t in templates:
-                                with ui.row().classes(
-                                    "w-full justify-between items-center p-2 border rounded bg-slate-50"
-                                ):
-                                    with ui.row().classes("items-center gap-4"):
-                                        ui.badge(t.doc_type).props('color="primary"')
-                                        ui.label(t.name).classes(
-                                            "font-medium text-sm text-slate-700"
-                                        )
-                                    ui.button(
-                                        icon="delete",
-                                        on_click=lambda doc_id=t.id: delete_template(
-                                            doc_id
-                                        ),
-                                    ).props('flat round dense color="negative"')
-
-                # WICHTIG: Die Funktion muss jetzt 'async def' sein!
-                async def handle_template_upload(e):
-                    if not selected_type.value:
-                        return ui.notify(
-                            "Bitte zuerst einen Vorlagentyp auswählen!", type="warning"
-                        )
-
-                    filename = get_upload_filename(e)
-                    safe_filename = f"{selected_type.value}_{int(os.path.getmtime('.'))}_{filename.replace(' ', '_')}"
-                    filepath = os.path.join(TEMPLATE_DIR, safe_filename)
-
-                    # WICHTIG: Wir müssen 'await' benutzen
-                    file_bytes = await get_upload_content(e)
-                    if not file_bytes:
-                        return ui.notify(
-                            "Fehler: Dateiinhalt konnte nicht gelesen werden.",
-                            type="negative",
-                        )
-
-                    with open(filepath, "wb") as f:
-                        f.write(file_bytes)
-
-                    with get_session() as session:
-                        new_tpl = DocumentTemplate(
-                            doc_type=selected_type.value,
-                            name=filename,
-                            file_path=filepath,
-                            is_active=True,
-                        )
-                        session.add(new_tpl)
-                        session.commit()
-
-                    ui.notify(
-                        f"Vorlage für {selected_type.value} hochgeladen!",
-                        type="positive",
-                    )
-                    template_list.refresh()
-
-                def delete_template(doc_id):
-                    with get_session() as session:
-                        tpl = (
-                            session.query(DocumentTemplate).filter_by(id=doc_id).first()
-                        )
-                        if tpl:
-                            if os.path.exists(tpl.file_path):
-                                os.remove(tpl.file_path)
-                            session.delete(tpl)
-                            session.commit()
-                    ui.notify("Vorlage gelöscht", type="info")
-                    template_list.refresh()
-
-                ui.upload(
-                    on_upload=handle_template_upload,
-                    auto_upload=True,
-                    max_files=1,
-                    label="Vorlagendatei hochladen",
-                ).props('accept=".docx,.odt" flat bordered').classes("w-full mb-4")
-                template_list()
