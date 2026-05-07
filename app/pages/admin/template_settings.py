@@ -164,6 +164,7 @@ def template_settings_page() -> None:
                 "name": t.name,
                 "doc_type": t.doc_type,
                 "is_default": t.is_default,
+                "is_active": t.is_active,  # <-- DAS HAT GEFEHLT!
             }
             for t in templates
         ]
@@ -188,7 +189,7 @@ def template_settings_page() -> None:
                 "label": "Aktiv",
                 "field": "is_active",
                 "align": "center",
-            },  # NEU
+            },
             {
                 "name": "is_default",
                 "label": "Standard",
