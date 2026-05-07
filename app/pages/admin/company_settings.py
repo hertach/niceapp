@@ -10,7 +10,7 @@ from app.models.company_setting import CompanyProfile, DocumentTemplate
 
 
 def company_settings_page() -> None:
-    ui.label("Firmenangaben & Vorlagen").classes(
+    ui.label("Firmenangaben").classes(
         "text-[24px] font-semibold text-[#1e3a5f] mb-4"
     )
 
@@ -23,8 +23,13 @@ def company_settings_page() -> None:
         "phone": "",
         "email": "",
         "website": "",
+        "vat_number": "",
+        "payment_terms_days": 30,
+        "payment_terms_mode": "Netto",
         "iban": "",
         "bank_name": "",
+        "account_number": "",
+        "bic_swift": "",
         "logo_path": None,
     }
 
@@ -46,21 +51,24 @@ def company_settings_page() -> None:
         with get_session() as session:
             profile = session.query(CompanyProfile).first()
             if profile:
-                state.update(
-                    {
-                        "profile_id": profile.id,
-                        "name": profile.name or "",
-                        "street": profile.street or "",
-                        "zip_code": profile.zip_code or "",
-                        "city": profile.city or "",
-                        "phone": profile.phone or "",
-                        "email": profile.email or "",
-                        "website": profile.website or "",
-                        "iban": profile.iban or "",
-                        "bank_name": profile.bank_name or "",
-                        "logo_path": profile.logo_path,
-                    }
-                )
+                state.update({
+                    "profile_id": profile.id,
+                    "name": profile.name or "",
+                    "street": profile.street or "",
+                    "zip_code": profile.zip_code or "",
+                    "city": profile.city or "",
+                    "phone": profile.phone or "",
+                    "email": profile.email or "",
+                    "website": profile.website or "",
+                    "vat_number": profile.vat_number or "",
+                    "payment_terms_days": profile.payment_terms_days or 30,
+                    "payment_terms_mode": profile.payment_terms_mode or "Netto",
+                    "iban": profile.iban or "",
+                    "bank_name": profile.bank_name or "",
+                    "account_number": profile.account_number or "",
+                    "bic_swift": profile.bic_swift or "",
+                    "logo_path": profile.logo_path,
+                })
             else:
                 new_profile = CompanyProfile()
                 session.add(new_profile)
@@ -71,21 +79,30 @@ def company_settings_page() -> None:
 
     def save_company_data():
         with get_session() as session:
-            profile = (
-                session.query(CompanyProfile).filter_by(id=state["profile_id"]).first()
-            )
-            if profile:
-                profile.name = state["name"]
-                profile.street = state["street"]
-                profile.zip_code = state["zip_code"]
-                profile.city = state["city"]
-                profile.phone = state["phone"]
-                profile.email = state["email"]
-                profile.website = state["website"]
-                profile.iban = state["iban"]
-                profile.bank_name = state["bank_name"]
-                session.commit()
-            ui.notify("Firmenangaben gespeichert!", type="positive")
+            if state["profile_id"]:
+                profile = session.get(CompanyProfile, state["profile_id"])
+            else:
+                profile = CompanyProfile()
+                session.add(profile)
+
+            profile.name = state["name"]
+            profile.street = state["street"]
+            profile.zip_code = state["zip_code"]
+            profile.city = state["city"]
+            profile.phone = state["phone"]
+            profile.email = state["email"]
+            profile.website = state["website"]
+            profile.vat_number = state["vat_number"]
+            profile.payment_terms_days = int(state["payment_terms_days"])
+            profile.payment_terms_mode = state["payment_terms_mode"]
+            profile.iban = state["iban"]
+            profile.bank_name = state["bank_name"]
+            profile.account_number = state["account_number"]
+            profile.bic_swift = state["bic_swift"]
+
+            session.commit()
+            state["profile_id"] = profile.id
+        ui.notify("Stammdaten erfolgreich gespeichert!", type="positive")
 
     def get_upload_filename(e) -> str:
         """Liest den Dateinamen sicher aus dem Upload-Event (inkl. NiceGUI 2.x)."""
@@ -192,6 +209,7 @@ def company_settings_page() -> None:
                 ui.input("Webseite").bind_value(state, "website").classes(
                     "w-full"
                 ).props("outlined dense")
+                ui.input("MWSt-Nummer").bind_value(state, "vat_number").classes("w-full").props("outlined dense")
 
             with ui.card().classes("w-full p-6 shadow-sm border border-slate-200"):
                 ui.label("Firmenlogo").classes(
@@ -229,8 +247,23 @@ def company_settings_page() -> None:
                 ui.input("IBAN").bind_value(state, "iban").classes("w-full").props(
                     "outlined dense"
                 )
+                ui.input("Konto-Nummer").bind_value(state, "account_number").classes("w-full").props(
+                    "outlined dense")  # NEU
+                ui.input("BIC / SWIFT").bind_value(state, "bic_swift").classes("w-full").props("outlined dense")
+
+                with ui.card().classes("w-full p-6 shadow-sm border border-slate-200"):
+                    ui.label("Zahlungskonditionen").classes(
+                        "text-lg font-bold text-[#1e3a5f] border-b border-gray-100 pb-2 mb-2")
+                    with ui.row().classes("w-full items-center gap-4"):
+                        ui.number("Zahlungsziel (Tage)", format="%.0f").bind_value(state,
+                                                                                     "payment_terms_days").classes(
+                            "w-40").props("outlined dense")
+                        ui.select(["Netto", "Brutto"], label="Modus").bind_value(state, "payment_terms_mode").classes(
+                            "w-32").props("outlined dense")
 
                 with ui.row().classes("w-full justify-end mt-4"):
                     ui.button(
                         "Stammdaten speichern", icon="save", on_click=save_company_data
                     ).props("unelevated").classes("bg-[#0078d4] text-white")
+
+    load_company_data()

@@ -15,10 +15,17 @@ class CompanyProfile(Base):
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     website = Column(String, nullable=True)
-
-    iban = Column(String, nullable=True)
+    # --- VAT ---
+    vat_number = Column(String, nullable=True)  # MWSt-Nummer
+    # --- PAYMENT TERMS ---
+    payment_terms_days = Column(Integer, default=30)
+    payment_terms_mode = Column(String, default="Netto")
+    # --- BANK DETAILS ---
     bank_name = Column(String, nullable=True)
-
+    iban = Column(String, nullable=True)
+    account_number = Column(String, nullable=True)
+    bic_swift = Column(String, nullable=True)
+    # --- LOGO PATH ---
     logo_path = Column(String, nullable=True)
 
 

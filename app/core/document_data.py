@@ -18,8 +18,13 @@ PLACEHOLDERS = {
         "{{firma_mail}}",
         "{{firma_www}}",
         "{{firma_logo}}",
-        "{{firma_iban}}",
-        "{{firma_bank}}",
+        "{{mwst_nummer}}",
+        "{{bank_name}}",
+        "{{bank_iban}}",
+        "{{bank_konto_nummer}}",
+        "{{bank_bic_swift}}",
+        "{{brutto_netto}}",
+        "{{zahlungsziel}}",
     ],
     "Patient": [
         "{{p_anrede}}",
@@ -47,7 +52,7 @@ def get_company_context(session: Session) -> dict:
     company = session.query(CompanyProfile).first()
     if not company:
         return {}
-
+    print(company.iban)
     return {
         "firma_name": company.name or "",
         "firma_strasse": company.street or "",
@@ -57,9 +62,14 @@ def get_company_context(session: Session) -> dict:
         "firma_telefon": company.phone or "",
         "firma_mail": company.email or "",
         "firma_www": company.website or "",
-        "firma_iban": company.iban or "",
-        "firma_bank": company.bank_name or "",
         "firma_logo": company.logo_path or "",
+        "mwst_nummer": company.vat_number or "",
+        "bank_name": company.bank_name or "",
+        "bank_iban": company.iban or "",
+        "bank_konto_nummer": company.account_number or "",
+        "bank_bic_swift": company.bic_swift or "",
+        "zahlungsziel": company.payment_terms_days or "",
+        "brutto_netto": company.payment_terms_mode or "",
     }
 def get_salutation(salutation):
     match salutation:
