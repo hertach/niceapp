@@ -26,17 +26,39 @@ def app_settings_page() -> None:
         current_log_terminal = setting.log_to_terminal
         # STREAMING INTERVAL
         current_streaming_interval = setting.streaming_interval
+        # UPLOAD DIRECTORIES
+        current_upload_logos = setting.upload_path_logos or './data/uploads/logos'
+        current_upload_templates = setting.upload_path_templates or './data/uploads/templates'
 
     with ui.card().classes('w-full max-w-3xl p-8 shadow-sm border border-slate-200'):
 
         with ui.column().classes('w-full gap-6'):
-            ui.label('Backup-Konfiguration').classes('font-medium text-slate-700')
+
             async def open_picker():
                 # Wir übergeben den aktuell eingetippten Pfad als Startpunkt
                 result = await DirectoryPicker(backup_input.value or '.')
                 if result:
                     backup_input.value = result  # Schreibt den gewählten Pfad ins Textfeld
 
+            async def pick_dir(input_element):
+                result = await DirectoryPicker(input_element.value or '.')
+                if result:
+                    input_element.value = result
+
+            ui.label('Upload-Pfade').classes('font-medium text-slate-700')
+            # Logos
+            logo_input = ui.input('Verzeichnis für Logos', value=current_upload_logos).classes('w-full').props(
+                'outlined dense')
+            with logo_input.add_slot('append'):
+                ui.button(icon='folder', on_click=lambda: pick_dir(logo_input)).props('flat round dense')
+
+            # Vorlagen
+            template_input = ui.input('Verzeichnis für Vorlagen', value=current_upload_templates).classes(
+                'w-full').props('outlined dense')
+            with template_input.add_slot('append'):
+                ui.button(icon='folder', on_click=lambda: pick_dir(template_input)).props('flat round dense')
+
+            ui.label('Backup-Konfiguration').classes('font-medium text-slate-700')
             backup_input = ui.input(
                 label='Backup-Verzeichnis (Pfad)',
                 value=current_backup_path,
@@ -86,6 +108,8 @@ def app_settings_page() -> None:
         def save_settings():
             with get_session() as session:
                 s = session.query(AppSetting).first()
+                s.upload_path_logos = logo_input.value
+                s.upload_path_templates = template_input.value
                 s.backup_path = backup_input.value
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value

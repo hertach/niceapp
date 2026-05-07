@@ -16,3 +16,6 @@ class AppSetting(Base):
     log_to_terminal = Column(Boolean, default=True)
     # ── STREAMING INTERVAL ──
     streaming_interval = Column(Float, default=0.5)
+    # ── UPLOAD DIRECTORIES ──
+    upload_path_logos = Column(String(255), default='./data/uploads/logos')
+    upload_path_templates = Column(String(255), default='./data/uploads/templates')
