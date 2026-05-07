@@ -39,11 +39,8 @@ def company_settings_page() -> None:
             else "./data/uploads/logos"
         )
 
-
-
     # Ordner sicherstellen
     os.makedirs(LOGO_DIR, exist_ok=True)
-
 
     def load_company_data():
         with get_session() as session:

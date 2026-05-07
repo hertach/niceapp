@@ -6,6 +6,7 @@ import time
 from nicegui import ui
 
 from app.core.database import get_session
+from app.core.document_data import PLACEHOLDERS
 from app.core.logger import app_logger
 from app.models.app_setting import AppSetting
 from app.models.company_setting import DocumentTemplate
@@ -15,32 +16,6 @@ def template_settings_page() -> None:
     ui.label("Vorlagenverwaltung").classes(
         "text-[24px] font-semibold text-[#1e3a5f] mb-4"
     )
-
-    # Platzhalter-Definition
-    PLACEHOLDERS = {
-        "Allgemein (Firma)": [
-            "{{firma_name}}",
-            "{{firma_strasse}}",
-            "{{firma_ort}}",
-            "{{firma_iban}}",
-            "{{firma_bank}}",
-        ],
-        "Patient": [
-            "{{p_vorname}}",
-            "{{p_nachname}}",
-            "{{p_strasse}}",
-            "{{p_plz}}",
-            "{{p_ort}}",
-            "{{p_geburtsdatum}}",
-        ],
-        "Sitzung / Finanzen": [
-            "{{s_datum}}",
-            "{{s_betrag_netto}}",
-            "{{s_mwst_satz}}",
-            "{{s_betrag_brutto}}",
-            "{{s_anliegen}}",
-        ],
-    }
 
     with get_session() as session:
         app_settings = session.query(AppSetting).first()
@@ -320,7 +295,9 @@ def template_settings_page() -> None:
 
     # ── 5. UI LAYOUT ──
     with ui.row().classes("w-full gap-8 items-start"):
-        with ui.column().classes("flex-1 min-w-0"):
+
+        # Linke Seite: Schmaler und feste Breite (z.B. 500px)
+        with ui.column().classes("flex-2 shrink-0"):
             # Upload Card
             with ui.card().classes(
                 "w-full p-6 mb-6 shadow-sm border border-slate-200 bg-blue-50/20"
@@ -332,7 +309,7 @@ def template_settings_page() -> None:
                             ["Rechnung", "Quittung", "Begleitbrief", "Mahnung"],
                             label="Zuweisung",
                         )
-                        .classes("w-48")
+                        .classes("w-40")
                         .props("outlined dense bg-white")
                     )
                     ui.upload(
@@ -343,33 +320,53 @@ def template_settings_page() -> None:
 
             template_table_refresh()
 
-        # Platzhalter-Liste Rechts
-        with ui.column().classes("w-80 shrink-0"):
+        # Rechte Seite: Breiter, Accordion und 2 Spalten
+        with ui.column().classes("flex-1"):
             with ui.card().classes(
                 "w-full p-6 shadow-sm border border-slate-200 sticky top-4"
             ):
-                ui.label("Mögliche Platzhalter").classes(
-                    "font-bold text-lg text-[#1e3a5f] mb-1"
-                )
-                ui.label("Klicke auf ein Icon, um den Tag zu kopieren.").classes(
-                    "text-xs text-slate-500 mb-6"
-                )
+                with ui.row().classes("w-full items-center justify-between mb-2"):
+                    ui.label("Verfügbare Platzhalter").classes(
+                        "font-bold text-lg text-[#1e3a5f]"
+                    )
+                    ui.icon("info", color="grey-5").tooltip(
+                        "Klicke auf eine Variable, um sie in die Zwischenablage zu kopieren."
+                    )
 
                 def copy_tag(t):
                     ui.clipboard.write(t)
                     ui.notify(f"{t} kopiert", position="top", type="positive")
 
+                # Accordions (Expansion-Panels) iterieren
                 for cat, tags in PLACEHOLDERS.items():
-                    ui.label(cat).classes(
-                        "text-sm font-bold mt-2 border-b w-full pb-1 text-slate-700"
-                    )
-                    for tag in tags:
-                        with ui.row().classes(
-                            "w-full justify-between items-center py-1 group"
-                        ):
-                            ui.label(tag).classes("text-xs font-mono text-[#0078d4]")
-                            ui.button(
-                                icon="content_copy", on_click=lambda t=tag: copy_tag(t)
-                            ).props('flat round dense size=xs color="grey"').classes(
-                                "opacity-0 group-hover:opacity-100 transition-opacity"
-                            )
+                    # standardmäßig das erste zuklappen (oder aufklappen, wie man mag)
+                    with (
+                        ui.expansion(cat, icon="data_object")
+                        .classes(
+                            "w-full bg-slate-50/50 border border-slate-200 rounded mb-2"
+                        )
+                        .props('header-class="font-semibold text-slate-700"')
+                    ):
+
+                        # Das 2-spaltige Grid INNEN im Accordion
+                        with ui.grid(columns=2).classes("w-full gap-x-6 gap-y-1 p-2"):
+                            for tag in tags:
+                                # Jeder Tag bekommt einen schönen Hover-Effekt
+                                with (
+                                    ui.row()
+                                    .classes(
+                                        "w-full justify-between items-center py-1 group hover:bg-slate-200/40 rounded px-2 transition-colors cursor-pointer"
+                                    )
+                                    .on("click", lambda t=tag: copy_tag(t))
+                                ):
+                                    ui.label(tag).classes(
+                                        "text-xs font-mono text-[#0078d4]"
+                                    )
+                                    ui.button(
+                                        icon="content_copy",
+                                        on_click=lambda t=tag: copy_tag(t),
+                                    ).props(
+                                        'flat round dense size=xs color="grey"'
+                                    ).classes(
+                                        "opacity-0 group-hover:opacity-100 transition-opacity"
+                                    )
