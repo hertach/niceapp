@@ -1,11 +1,14 @@
 # app/core/logger.py
+import logging
 import os
 import shutil
-import logging
 from datetime import datetime
+
 from sqlalchemy import text
-from app.models.log_entry import LogEntry, LogSessionLocal, log_engine, LogBase
+
 from app.config import LOG_PATH
+from app.models.log_entry import LogBase, LogEntry, LogSessionLocal, log_engine
+
 
 class DatabaseLogHandler(logging.Handler):
     """Speichert Logs direkt in der separaten log.db."""
@@ -18,7 +21,7 @@ class DatabaseLogHandler(logging.Handler):
                     module=record.name,
                     filename=record.filename,  # <-- Neu ausgelesen
                     func_name=record.funcName,  # <-- Neu ausgelesen
-                    message=self.format(record)
+                    message=self.format(record),
                 )
                 session.add(log_entry)
                 session.commit()
@@ -27,16 +30,19 @@ class DatabaseLogHandler(logging.Handler):
 
 
 console_handler = logging.StreamHandler()
-console_handler.setFormatter(logging.Formatter('[%(levelname)s] [%(filename)s:%(funcName)s] %(message)s'))
+console_handler.setFormatter(
+    logging.Formatter("[%(levelname)s] [%(filename)s:%(funcName)s] %(message)s")
+)
+
 
 def setup_logger():
     """Initialisiert den globalen Logger der App."""
-    logger = logging.getLogger('niceapp')
+    logger = logging.getLogger("niceapp")
     logger.setLevel(logging.INFO)
 
     if not logger.handlers:
         db_handler = DatabaseLogHandler()
-        formatter = logging.Formatter('%(message)s')
+        formatter = logging.Formatter("%(message)s")
         db_handler.setFormatter(formatter)
         logger.addHandler(db_handler)
 
@@ -48,9 +54,10 @@ def setup_logger():
 
 app_logger = setup_logger()
 
+
 def update_console_logger(enable: bool):
     """Aktiviert oder deaktiviert den Output im Terminal zur Laufzeit."""
-    logger = logging.getLogger('niceapp')
+    logger = logging.getLogger("niceapp")
     if enable and console_handler not in logger.handlers:
         logger.addHandler(console_handler)
     elif not enable and console_handler in logger.handlers:
@@ -58,6 +65,7 @@ def update_console_logger(enable: bool):
 
 
 # ── Wartungs-Funktionen für die Datenbank ──
+
 
 def clear_logs() -> None:
     """Löscht alle Einträge aus der Log-Tabelle."""
@@ -71,7 +79,9 @@ def vacuum_logs() -> None:
     """Führt einen VACUUM-Befehl aus, um die Datenbank-Datei zu schrumpfen."""
     with log_engine.connect() as connection:
         # VACUUM muss außerhalb einer Transaktion laufen
-        connection.execution_options(isolation_level="AUTOCOMMIT").execute(text("VACUUM"))
+        connection.execution_options(isolation_level="AUTOCOMMIT").execute(
+            text("VACUUM")
+        )
     app_logger.info("Log-Datenbank wurde komprimiert (VACUUM).")
 
 
@@ -81,8 +91,8 @@ def archive_logs() -> str:
     if not os.path.exists(db_path):
         return "Keine Datenbank zum Archivieren gefunden."
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    archive_path = f'data/log_archive_{timestamp}.db'
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_path = f"data/log_archive_{timestamp}.db"
 
     # Datei kopieren
     shutil.copy2(db_path, archive_path)

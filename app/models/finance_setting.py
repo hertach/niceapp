@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey
+from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
 
 
@@ -13,6 +14,7 @@ class VATSetting(Base):
     is_active = Column(Boolean, default=True)  # Soft-Delete Flag
 
     sessions = relationship("PatientSession", back_populates="vat_setting")
+
 
 class PaymentMethod(Base):
     __tablename__ = "payment_methods"

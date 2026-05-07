@@ -1,12 +1,13 @@
 # app/core/backup.py
+import asyncio
 import os
 import shutil
-import asyncio
 from datetime import datetime, timedelta
+
+from app.config import DB_PATH, LOG_PATH
 from app.core.database import get_session
-from app.models.app_setting import AppSetting
 from app.core.logger import app_logger
-from app.config import LOG_PATH, DB_PATH
+from app.models.app_setting import AppSetting
 
 
 def perform_backup() -> bool:
@@ -22,16 +23,20 @@ def perform_backup() -> bool:
     if not os.path.exists(backup_dir):
         os.makedirs(backup_dir, exist_ok=True)
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     try:
         # Haupt-Datenbank kopieren
         if os.path.exists(DB_PATH):
-            shutil.copy2(DB_PATH, os.path.join(backup_dir, f'app_backup_{timestamp}.db'))
+            shutil.copy2(
+                DB_PATH, os.path.join(backup_dir, f"app_backup_{timestamp}.db")
+            )
 
         # Log-Datenbank kopieren
         if os.path.exists(LOG_PATH):
-            shutil.copy2(LOG_PATH, os.path.join(backup_dir, f'log_backup_{timestamp}.db'))
+            shutil.copy2(
+                LOG_PATH, os.path.join(backup_dir, f"log_backup_{timestamp}.db")
+            )
 
         app_logger.info(f"Backup erfolgreich erstellt in: {backup_dir}")
         return True
@@ -56,22 +61,24 @@ async def backup_scheduler_loop():
         try:
             with get_session() as session:
                 setting = session.query(AppSetting).first()
-                if not setting or setting.backup_schedule == 'none':
+                if not setting or setting.backup_schedule == "none":
                     continue
 
                 now = datetime.now()
                 last = setting.last_backup
 
                 needs_backup = False
-                if setting.backup_schedule == 'daily':
+                if setting.backup_schedule == "daily":
                     if not last or now - last >= timedelta(days=1):
                         needs_backup = True
-                elif setting.backup_schedule == 'weekly':
+                elif setting.backup_schedule == "weekly":
                     if not last or now - last >= timedelta(weeks=1):
                         needs_backup = True
 
                 if needs_backup:
-                    app_logger.info(f"Führe geplantes Backup aus ({setting.backup_schedule})...")
+                    app_logger.info(
+                        f"Führe geplantes Backup aus ({setting.backup_schedule})..."
+                    )
                     if perform_backup():
                         # Letzten Backup-Zeitpunkt in DB aktualisieren
                         setting.last_backup = now

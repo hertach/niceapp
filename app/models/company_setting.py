@@ -1,10 +1,11 @@
 # app/models/company_setting.py
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Boolean, Column, Integer, String
+
 from app.core.database import Base
 
 
 class CompanyProfile(Base):
-    __tablename__ = 'company_profiles'
+    __tablename__ = "company_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=True)
@@ -22,7 +23,7 @@ class CompanyProfile(Base):
 
 
 class DocumentTemplate(Base):
-    __tablename__ = 'document_templates'
+    __tablename__ = "document_templates"
 
     id = Column(Integer, primary_key=True, index=True)
     doc_type = Column(String, nullable=False)  # z.B. 'Rechnung', 'Quittung', 'Mahnung'

@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.18.4",
     "bcrypt>=5.0.0",
     "certifi>=2026.2.25",
+    "docxtpl>=0.20.2",
     "faster-whisper>=1.2.1",
     "nicegui>=3.8.0",
     "python-dotenv>=1.2.2",

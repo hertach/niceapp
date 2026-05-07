@@ -215,6 +215,10 @@ Datei unter app/models/ erstellen
 alembic revision --autogenerate -m "was geaendert wurde"
 alembic upgrade head
 
+# vor jedem commit
+uv run isort --profile black .
+uv run black .
+
 # App im Dev-Modus (RELOAD=true in .env)
 uv run python main.py
 ```

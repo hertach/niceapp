@@ -1,11 +1,12 @@
 # app/models/patient.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, Text, Float
+from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
 
 
 class Patient(Base):
-    __tablename__ = 'patients'
+    __tablename__ = "patients"
 
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String(100), nullable=False)
@@ -15,24 +16,35 @@ class Patient(Base):
     notes = Column(Text, nullable=True)
 
     # ── 1:n Beziehungen ──
-    addresses = relationship("PatientAddress", back_populates="patient", cascade="all, delete-orphan")
-    emails = relationship("PatientEmail", back_populates="patient", cascade="all, delete-orphan")
-    phones = relationship("PatientPhone", back_populates="patient", cascade="all, delete-orphan")
-    insurances = relationship("PatientInsurance", back_populates="patient", cascade="all, delete-orphan")  # <-- NEU
-    sessions = relationship("PatientSession", back_populates="patient", cascade="all, delete-orphan")
+    addresses = relationship(
+        "PatientAddress", back_populates="patient", cascade="all, delete-orphan"
+    )
+    emails = relationship(
+        "PatientEmail", back_populates="patient", cascade="all, delete-orphan"
+    )
+    phones = relationship(
+        "PatientPhone", back_populates="patient", cascade="all, delete-orphan"
+    )
+    insurances = relationship(
+        "PatientInsurance", back_populates="patient", cascade="all, delete-orphan"
+    )  # <-- NEU
+    sessions = relationship(
+        "PatientSession", back_populates="patient", cascade="all, delete-orphan"
+    )
 
     @property
     def full_name(self) -> str:
-        return f'{self.first_name} {self.last_name}'
+        return f"{self.first_name} {self.last_name}"
 
     def __repr__(self) -> str:
-        return f'<Patient {self.full_name}>'
+        return f"<Patient {self.full_name}>"
+
 
 class PatientAddress(Base):
-    __tablename__ = 'patient_addresses'
+    __tablename__ = "patient_addresses"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     street = Column(String(200))
     zip_code = Column(String(20))
     city = Column(String(100))
@@ -43,10 +55,10 @@ class PatientAddress(Base):
 
 
 class PatientEmail(Base):
-    __tablename__ = 'patient_emails'
+    __tablename__ = "patient_emails"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     email = Column(String(255))
     type = Column(String(50))
     is_main = Column(Boolean, default=False)
@@ -56,10 +68,10 @@ class PatientEmail(Base):
 
 
 class PatientPhone(Base):
-    __tablename__ = 'patient_phones'
+    __tablename__ = "patient_phones"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     number = Column(String(50))
     type = Column(String(50))  # z.B. "Mobil", "Privat", "Geschäftlich"
     is_main = Column(Boolean, default=False)
@@ -69,10 +81,10 @@ class PatientPhone(Base):
 
 
 class PatientInsurance(Base):
-    __tablename__ = 'patient_insurances'
+    __tablename__ = "patient_insurances"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     name = Column(String(200), nullable=False)  # Name der Krankenkasse
     insurance_number = Column(String(100))  # Versichertennummer
     is_deleted = Column(Boolean, default=False)  # True = Alte Versicherung (Historie)
@@ -81,10 +93,10 @@ class PatientInsurance(Base):
 
 
 class PatientSession(Base):
-    __tablename__ = 'patient_sessions'
+    __tablename__ = "patient_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
 
     date = Column(Date, nullable=False)
     time_from = Column(String(5))  # Format: "HH:MM"
@@ -94,8 +106,8 @@ class PatientSession(Base):
     approach = Column(Text)  # Lösungsansatz
     protocol = Column(Text)  # Protokoll
 
-    payment_method_id = Column(Integer, ForeignKey('payment_methods.id'), nullable=True)
-    vat_id = Column(Integer, ForeignKey('vat_settings.id'), nullable=True)
+    payment_method_id = Column(Integer, ForeignKey("payment_methods.id"), nullable=True)
+    vat_id = Column(Integer, ForeignKey("vat_settings.id"), nullable=True)
     is_paid = Column(Boolean, default=False)
     amount = Column(Float, default=0.0)
 

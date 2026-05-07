@@ -1,13 +1,15 @@
-import os
+import asyncio
 import json
+import os
+import tempfile
 import urllib.request
 import zipfile
-import tempfile
-import asyncio
-from faster_whisper import WhisperModel
+
 import vosk
+from faster_whisper import WhisperModel
 
 VOSK_MODEL_NAME = "vosk-model-small-de-0.15"
+
 
 class SpeechManager:
     _whisper_model = None
@@ -24,7 +26,7 @@ class SpeechManager:
             zip_path = "vosk_tmp.zip"
             try:
                 urllib.request.urlretrieve(url, zip_path)
-                with zipfile.ZipFile(zip_path, 'r') as z:
+                with zipfile.ZipFile(zip_path, "r") as z:
                     z.extractall(".")
                 os.remove(zip_path)
                 print("Vosk-Modell erfolgreich installiert.")
@@ -35,7 +37,9 @@ class SpeechManager:
         if cls._whisper_model is None:
             print("Initialisiere Whisper (Modell: small)...")
             try:
-                cls._whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+                cls._whisper_model = WhisperModel(
+                    "small", device="cpu", compute_type="int8"
+                )
                 print("Whisper bereit.")
             except Exception as e:
                 print(f"Whisper Fehler: {e}")
