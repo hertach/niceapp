@@ -1,9 +1,10 @@
 # app/core/document_engine.py
 import os
+import platform
+import subprocess
 import time
 from datetime import datetime
-import subprocess
-import platform
+
 from docxtpl import DocxTemplate
 from sqlalchemy.orm import Session
 
@@ -62,13 +63,34 @@ class DocumentEngine:
             "p_ort": main_address.city if main_address else "",
         }
 
-    def generate_document(self, doc_type: str, patient_id: int, session_ids: list[int] = None,
-                          convert_to_pdf: bool = True) -> str:
+    def generate_document(
+        self,
+        doc_type: str,
+        patient_id: int,
+        session_ids: list[int] = None,
+        convert_to_pdf: bool = True,
+        specific_template_id: int = None,
+    ) -> str:
         with get_session() as db_session:
-            # 1. Vorlage finden
-            tpl_record = db_session.query(DocumentTemplate).filter_by(doc_type=doc_type, is_default=True).first()
-            if not tpl_record:
-                tpl_record = db_session.query(DocumentTemplate).filter_by(doc_type=doc_type).first()
+            # 1. Vorlage finden (JETZT MIT SPECIFIC_TEMPLATE_ID LOGIK)
+            if specific_template_id:
+                tpl_record = (
+                    db_session.query(DocumentTemplate)
+                    .filter_by(id=specific_template_id)
+                    .first()
+                )
+            else:
+                tpl_record = (
+                    db_session.query(DocumentTemplate)
+                    .filter_by(doc_type=doc_type, is_default=True)
+                    .first()
+                )
+                if not tpl_record:
+                    tpl_record = (
+                        db_session.query(DocumentTemplate)
+                        .filter_by(doc_type=doc_type)
+                        .first()
+                    )
 
             if not tpl_record or not os.path.exists(tpl_record.file_path):
                 raise FileNotFoundError(f"Keine Vorlage für '{doc_type}' gefunden.")
@@ -78,37 +100,49 @@ class DocumentEngine:
             context = self._get_company_data(db_session)
             context.update(self._get_patient_data(patient))
 
-            # ── HIER IST DIE WIEDERHERGESTELLTE LOGIK FÜR DIE SITZUNGEN ──
+            # Sitzungs-Logik (Sammelrechnung)
             if session_ids:
                 sessions_data = []
                 total_net = 0.0
                 total_gross = 0.0
 
-                # Hole alle ausgewählten Sitzungen, chronologisch sortiert
-                db_sessions = db_session.query(PatientSession).filter(PatientSession.id.in_(session_ids)).order_by(
-                    PatientSession.date).all()
+                db_sessions = (
+                    db_session.query(PatientSession)
+                    .filter(PatientSession.id.in_(session_ids))
+                    .order_by(PatientSession.date)
+                    .all()
+                )
 
                 for p_session in db_sessions:
-                    vat_rate = p_session.vat_setting.rate if p_session.vat_setting else 0.0
+                    vat_rate = (
+                        p_session.vat_setting.rate if p_session.vat_setting else 0.0
+                    )
                     brutto = p_session.amount * (1 + (vat_rate / 100))
 
                     total_net += p_session.amount
                     total_gross += brutto
 
-                    sessions_data.append({
-                        's_datum': p_session.date.strftime('%d.%m.%Y') if p_session.date else '',
-                        's_betrag_netto': f"{p_session.amount:.2f}",
-                        's_mwst_satz': f"{vat_rate}%",
-                        's_betrag_brutto': f"{brutto:.2f}",
-                        's_anliegen': p_session.issue or ''
-                    })
+                    sessions_data.append(
+                        {
+                            "s_datum": (
+                                p_session.date.strftime("%d.%m.%Y")
+                                if p_session.date
+                                else ""
+                            ),
+                            "s_betrag_netto": f"{p_session.amount:.2f}",
+                            "s_mwst_satz": f"{vat_rate}%",
+                            "s_betrag_brutto": f"{brutto:.2f}",
+                            "s_anliegen": p_session.issue or "",
+                        }
+                    )
 
-                # Fülle den Context mit der Liste und den neu berechneten Gesamtsummen
-                context.update({
-                    'sessions': sessions_data,
-                    'total_netto': f"{total_net:.2f}",
-                    'total_brutto': f"{total_gross:.2f}"
-                })
+                context.update(
+                    {
+                        "sessions": sessions_data,
+                        "total_netto": f"{total_net:.2f}",
+                        "total_brutto": f"{total_gross:.2f}",
+                    }
+                )
 
             # 3. Word-Datei generieren
             doc = DocxTemplate(tpl_record.file_path)
@@ -125,7 +159,7 @@ class DocumentEngine:
                     return self._convert_to_pdf(docx_path)
                 except Exception as e:
                     print(f"PDF Konvertierung fehlgeschlagen: {e}")
-                    return docx_path  # Fallback auf Word, falls LibreOffice fehlt
+                    return docx_path  # Fallback auf Word
 
             return docx_path
 

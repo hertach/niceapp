@@ -12,6 +12,7 @@ from nicegui import app as nicegui_app
 from nicegui import ui
 from sqlalchemy.orm import joinedload
 
+from app.components.document_dialog import open_document_dialog
 from app.core.database import get_session
 from app.core.document_engine import DocumentEngine
 from app.core.speech import SpeechManager
@@ -1347,46 +1348,47 @@ def patient_detail_page(navigate) -> None:
 
                                     ui.notify("Zusammenzug Logik folgt...", type="info")
 
-                                def print_invoice():
-                                    selected_rows = billing_table.selected
-                                    unpaid_selected = [r for r in selected_rows if not r['is_paid']]
+                                def handle_invoice_success():
+                                    """Wird ausgeführt, wenn die Rechnung erfolgreich gedruckt wurde."""
+                                    billing_table.selected.clear()
+                                    billing_table.update()
 
-                                    if not unpaid_selected:
-                                        ui.notify('Bitte markieren Sie mindestens eine offene Sitzung in der Tabelle.',
-                                                  type='warning')
+                                def print_invoice():
+                                    # Sicherheitscheck: Gibt es überhaupt Daten/eine Tabelle?
+                                    if not billing_rows:
+                                        ui.notify(
+                                            "Es gibt keine Sitzungen, die abgerechnet werden können.",
+                                            type="warning",
+                                        )
                                         return
 
-                                    session_ids = [r['id'] for r in unpaid_selected]
+                                    selected_rows = billing_table.selected
+                                    unpaid_selected = [
+                                        r for r in selected_rows if not r["is_paid"]
+                                    ]
 
-                                    # Normale Notification (verschwindet von selbst)
-                                    ui.notify(f'Generiere PDF-Rechnung für {len(session_ids)} Sitzung(en)...',
-                                              type='info')
+                                    if not unpaid_selected:
+                                        ui.notify(
+                                            "Bitte markieren Sie mindestens eine offene Sitzung in der Tabelle.",
+                                            type="warning",
+                                        )
+                                        return
 
-                                    try:
-                                        engine = DocumentEngine()
+                                    session_ids = [r["id"] for r in unpaid_selected]
 
-                                        # Wir rufen die Engine auf (PDF Konvertierung ist standardmäßig an)
-                                        filepath = engine.generate_document('Rechnung', patient_id, session_ids)
+                                    # Aufruf des neuen, zentralen Dialogs
+                                    open_document_dialog(
+                                        doc_type="Rechnung",
+                                        patient_id=patient_id,
+                                        session_ids=session_ids,
+                                        on_success=handle_invoice_success,
+                                    )
 
-                                        # PDF zum Download anbieten
-                                        ui.download(filepath)
-                                        ui.notify('PDF erfolgreich generiert!', type='positive')
-
-                                        # UI Aufräumen
-                                        billing_table.selected.clear()
-                                        billing_table.update()
-
-                                    except FileNotFoundError as e:
-                                        ui.notify(str(e), type='negative')
-                                    except Exception as e:
-                                        ui.notify(f'Fehler bei der Generierung: {e}', type='negative')
-                                        print(f"Docx/PDF Fehler: {e}")
-
-                                ui.button(
-                                    "Zusammenzug",
-                                    icon="summarize",
-                                    on_click=print_summary,
-                                ).props("outline").classes("text-[#0078d4]")
+                                    ui.button(
+                                        "Zusammenzug",
+                                        icon="summarize",
+                                        on_click=print_summary,
+                                    ).props("outline").classes("text-[#0078d4]")
 
                                 ui.button(
                                     "Rechnung erstellen",
@@ -1492,40 +1494,14 @@ def patient_detail_page(navigate) -> None:
                                 )
 
                                 def print_receipt(msg):
-
                                     row = msg.args
 
-                                    try:
-
-                                        ui.notify(
-                                            f"Generiere Quittung...", type="ongoing"
-                                        )
-
-                                        engine = DocumentEngine()
-
-                                        # Bei Quittungen ist es nur eine Sitzung (in einer Liste)
-
-                                        filepath = engine.generate_document(
-                                            "Quittung", patient_id, [row["id"]]
-                                        )
-
-                                        ui.download(filepath)
-
-                                        ui.notify(
-                                            "Quittung erfolgreich generiert!",
-                                            type="positive",
-                                        )
-
-                                    except FileNotFoundError as e:
-
-                                        ui.notify(str(e), type="negative")
-
-                                    except Exception as e:
-
-                                        ui.notify(
-                                            f"Fehler bei der Generierung: {e}",
-                                            type="negative",
-                                        )
+                                    # Aufruf des neuen, zentralen Dialogs
+                                    open_document_dialog(
+                                        doc_type="Quittung",
+                                        patient_id=patient_id,
+                                        session_ids=[row["id"]],
+                                    )
 
                                 def mark_as_paid(msg):
 

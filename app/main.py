@@ -134,7 +134,9 @@ def main() -> None:
         # navigate ist jetzt definiert → Dashboard korrekt registrieren
         PAGES["/"] = lambda: dashboard_page(navigate)
         PAGES["/patients"] = lambda: patients_page(navigate)
-        PAGES["/patient_detail"] = lambda: patient_detail_page(navigate)
+        PAGES["/patient_detail"] = lambda: patient_detail_page(
+            nicegui_app.storage.user.get("current_patient_id")
+        )
 
         content, nav_refs = main_layout(navigate, active_path[0])
         content_ref.append(content)

@@ -184,11 +184,16 @@ def template_settings_page() -> None:
                 "sortable": True,
             },
             {
+                "name": "is_active",
+                "label": "Aktiv",
+                "field": "is_active",
+                "align": "center",
+            },  # NEU
+            {
                 "name": "is_default",
                 "label": "Standard",
                 "field": "is_default",
                 "align": "center",
-                "sortable": True,
             },
             {"name": "actions", "label": "Aktionen", "field": "id", "align": "right"},
         ]
@@ -196,7 +201,14 @@ def template_settings_page() -> None:
         table = ui.table(columns=columns, rows=rows, row_key="id").classes(
             "w-full shadow-sm border border-slate-200 bg-white"
         )
-
+        table.add_slot(
+            "body-cell-is_active",
+            r"""
+                    <q-td :props="props">
+                        <q-toggle v-model="props.row.is_active" @update:model-value="$parent.$emit('toggle_active', props.row)" color="primary" />
+                    </q-td>
+                """,
+        )
         table.add_slot(
             "body-cell-is_default",
             r"""
@@ -227,7 +239,10 @@ def template_settings_page() -> None:
             </q-td>
         """,
         )
-
+        table.on(
+            "toggle_active",
+            lambda msg: toggle_active(msg.args["id"], msg.args["is_active"]),
+        )
         # Event-Bindings für die Tabelle
         table.on(
             "set_default", lambda msg: set_default(msg.args["id"], msg.args["doc_type"])
@@ -270,6 +285,14 @@ def template_settings_page() -> None:
 
         template_table_refresh.refresh()
         ui.notify(f'"{original_name}" erfolgreich hochgeladen', type="positive")
+
+    def toggle_active(tpl_id, new_state):
+        with get_session() as session:
+            session.query(DocumentTemplate).filter_by(id=tpl_id).update(
+                {DocumentTemplate.is_active: new_state}
+            )
+            session.commit()
+        ui.notify("Status aktualisiert")
 
     def set_default(tpl_id, t_type):
         with get_session() as session:
