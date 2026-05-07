@@ -29,3 +29,4 @@ class DocumentTemplate(Base):
     name = Column(String, nullable=False)  # Originaler Dateiname
     file_path = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)

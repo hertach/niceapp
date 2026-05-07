@@ -6,6 +6,7 @@ from app.pages.admin.menu_items import menu_items_page
 from app.pages.admin.logs import logs_page
 from app.pages.admin.app_settings import app_settings_page
 from app.pages.admin.company_settings import company_settings_page
+from app.pages.admin.template_settings import template_settings_page
 from app.pages.admin.finance_settings import finance_settings_page
 
 def settings_page() -> None:
@@ -48,6 +49,7 @@ def settings_page() -> None:
             menu_item('roles', 'Rollen', 'admin_panel_settings')
             menu_item('menu', 'Menüpunkte', 'menu')
             menu_item('company_settings', 'Firmenangaben', 'business')
+            menu_item('template_settings', 'Vorlagen', 'description')
             menu_item('finance_settings', 'Finanz-Einstellungen', 'price_change')
             menu_item('app_settings', 'App-Einstellungen', 'settings_applications')
             menu_item('logs', 'System-Logs', 'list_alt')
@@ -69,8 +71,10 @@ def settings_page() -> None:
                 roles_page()
             elif tab_id == 'menu':
                 menu_items_page()
-            elif tab_id == 'company_settings':  # <-- NEUER ROUTING-BLOCK
+            elif tab_id == 'company_settings':
                 company_settings_page()
+            elif tab_id == 'template_settings':
+                template_settings_page()
             elif tab_id == 'finance_settings':
                 finance_settings_page()
             elif tab_id == 'app_settings':
