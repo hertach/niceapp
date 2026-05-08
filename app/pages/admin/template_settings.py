@@ -370,3 +370,39 @@ def template_settings_page() -> None:
                                     ).classes(
                                         "opacity-0 group-hover:opacity-100 transition-opacity"
                                     )
+                with (
+                    ui.expansion("Tabellen", icon="data_object")
+                            .classes(
+                        "w-full bg-slate-50/50 border border-slate-200 rounded mb-2"
+                    )
+                            .props('header-class="font-semibold text-slate-700"')
+                ):
+                    tags = [
+                        "1. Du machst eine Tabelle in Word.",
+                        "2. Du schreibst in eine komplett leere Tabellenzeile nur den Tag ",
+                        "{% tr for s in sessions %}.",
+                        "3. In die nächste Zeile packst du deine Daten, z.B. {{ s.s_datum }}. Durch das s. weiß das Programm: nimm das Datum der aktuellen Sitzung in der Schleife.",
+                        "4. Danach machst du wieder eine leere Zeile mit ",
+                        "{% tr endfor %}"
+                    ]
+                    with ui.grid(columns=1).classes("w-full gap-x-6 gap-y-1 p-2"):
+                        for tag in tags:
+                            # Jeder Tag bekommt einen schönen Hover-Effekt
+                            with (
+                                ui.row()
+                                        .classes(
+                                    "w-full justify-between items-center py-1 group hover:bg-slate-200/40 rounded px-2 transition-colors cursor-pointer"
+                                )
+                                        .on("click", lambda t=tag: copy_tag(t))
+                            ):
+                                ui.label(tag).classes(
+                                    "text-xs font-mono text-[#0078d4]"
+                                )
+                                ui.button(
+                                    icon="content_copy",
+                                    on_click=lambda t=tag: copy_tag(t),
+                                ).props(
+                                    'flat round dense size=xs color="grey"'
+                                ).classes(
+                                    "opacity-0 group-hover:opacity-100 transition-opacity"
+                                )
