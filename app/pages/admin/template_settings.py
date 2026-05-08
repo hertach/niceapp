@@ -349,7 +349,7 @@ def template_settings_page() -> None:
                     ):
 
                         # Das 2-spaltige Grid INNEN im Accordion
-                        with ui.grid(columns=2).classes("w-full gap-x-6 gap-y-1 p-2"):
+                        with ui.grid(columns=1).classes("w-full gap-x-6 gap-y-1 p-2"):
                             for tag in tags:
                                 # Jeder Tag bekommt einen schönen Hover-Effekt
                                 with (
