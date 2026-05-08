@@ -1,5 +1,6 @@
 # app/pages/admin/users.py
 from nicegui import ui
+
 from app.core.auth import hash_password
 from app.core.database import get_session
 from app.models.role import Role
@@ -7,7 +8,9 @@ from app.models.user import User
 
 
 def users_page() -> None:
-    ui.label("Benutzerverwaltung").classes("text-[24px] font-semibold text-[#1e3a5f] mb-4")
+    ui.label("Benutzerverwaltung").classes(
+        "text-[24px] font-semibold text-[#1e3a5f] mb-4"
+    )
 
     # ── Daten laden ──────────────────────────────────────────
     def get_user_data() -> list[dict]:
@@ -17,7 +20,8 @@ def users_page() -> None:
                 {
                     "id": u.id,
                     "username": u.username,
-                    "full_name": f"{u.first_name or ''} {u.last_name or ''}".strip() or "-",
+                    "full_name": f"{u.first_name or ''} {u.last_name or ''}".strip()
+                    or "-",
                     "email": u.email or "",
                     "phone": u.phone or "",
                     "role": u.role,
@@ -34,13 +38,26 @@ def users_page() -> None:
         table.update()
 
     with ui.row().classes("mb-4"):
-        ui.button("Neuer Benutzer", icon="add", on_click=lambda: open_dialog()).props("unelevated").classes(
-            "bg-[#0078d4] text-white")
+        ui.button("Neuer Benutzer", icon="add", on_click=lambda: open_dialog()).props(
+            "unelevated"
+        ).classes("bg-[#0078d4] text-white")
 
     # ── Tabelle ──────────────────────────────────────────────
     columns = [
-        {"name": "username", "label": "Login", "field": "username", "align": "left", "sortable": True},
-        {"name": "full_name", "label": "Name", "field": "full_name", "align": "left", "sortable": True},
+        {
+            "name": "username",
+            "label": "Login",
+            "field": "username",
+            "align": "left",
+            "sortable": True,
+        },
+        {
+            "name": "full_name",
+            "label": "Name",
+            "field": "full_name",
+            "align": "left",
+            "sortable": True,
+        },
         {"name": "email", "label": "E-Mail", "field": "email", "align": "left"},
         {"name": "phone", "label": "Telefon", "field": "phone", "align": "left"},
         {"name": "role", "label": "Rolle", "field": "role", "align": "left"},
@@ -49,14 +66,18 @@ def users_page() -> None:
     ]
 
     table = ui.table(columns=columns, rows=get_user_data(), row_key="id").classes(
-        "w-full shadow-sm border border-slate-200 bg-white")
+        "w-full shadow-sm border border-slate-200 bg-white"
+    )
 
-    table.add_slot("body-cell-actions", r"""
+    table.add_slot(
+        "body-cell-actions",
+        r"""
         <q-td :props="props">
             <q-btn flat round dense icon="edit" color="primary" @click="$parent.$emit('edit', props.row)" />
             <q-btn flat round dense icon="delete" color="negative" @click="$parent.$emit('delete', props.row)" />
         </q-td>
-    """)
+    """,
+    )
 
     table.on("edit", lambda e: open_dialog(e.args))
     table.on("delete", lambda e: confirm_delete(e.args["id"], e.args["username"]))
@@ -71,24 +92,51 @@ def users_page() -> None:
 
             with ui.column().classes("w-full gap-3"):
                 # Login-Daten
-                username = ui.input("Benutzername (Login)", value=user_data["username"] if is_edit else "").classes(
-                    "w-full").props("outlined dense")
-                password = ui.input("Passwort", password=True).classes("w-full").props(
-                    f"outlined dense placeholder='{'Unverändert lassen' if is_edit else ''}'")
+                username = (
+                    ui.input(
+                        "Benutzername (Login)",
+                        value=user_data["username"] if is_edit else "",
+                    )
+                    .classes("w-full")
+                    .props("outlined dense")
+                )
+                password = (
+                    ui.input("Passwort", password=True)
+                    .classes("w-full")
+                    .props(
+                        f"outlined dense placeholder='{'Unverändert lassen' if is_edit else ''}'"
+                    )
+                )
 
                 ui.separator().classes("my-2")
 
                 # Persönliche Daten (Die neuen Felder)
                 with ui.row().classes("w-full gap-2"):
-                    fname = ui.input("Vorname", value=user_data["first_name"] if is_edit else "").classes(
-                        "flex-1").props("outlined dense")
-                    lname = ui.input("Name", value=user_data["last_name"] if is_edit else "").classes("flex-1").props(
-                        "outlined dense")
+                    fname = (
+                        ui.input(
+                            "Vorname", value=user_data["first_name"] if is_edit else ""
+                        )
+                        .classes("flex-1")
+                        .props("outlined dense")
+                    )
+                    lname = (
+                        ui.input(
+                            "Name", value=user_data["last_name"] if is_edit else ""
+                        )
+                        .classes("flex-1")
+                        .props("outlined dense")
+                    )
 
-                email = ui.input("E-Mail", value=user_data["email"] if is_edit else "").classes("w-full").props(
-                    "outlined dense type='email'")
-                phone = ui.input("Telefon", value=user_data["phone"] if is_edit else "").classes("w-full").props(
-                    "outlined dense")
+                email = (
+                    ui.input("E-Mail", value=user_data["email"] if is_edit else "")
+                    .classes("w-full")
+                    .props("outlined dense type='email'")
+                )
+                phone = (
+                    ui.input("Telefon", value=user_data["phone"] if is_edit else "")
+                    .classes("w-full")
+                    .props("outlined dense")
+                )
 
                 ui.separator().classes("my-2")
 
@@ -96,11 +144,19 @@ def users_page() -> None:
                 with get_session() as session:
                     roles = [r.name for r in session.query(Role).all()]
 
-                role_select = ui.select(roles, label="Rolle", value=user_data["role"] if is_edit else "user").classes(
-                    "w-full").props("outlined dense")
-                active_toggle = ui.checkbox("Benutzer ist aktiv",
-                                            value=True if not is_edit else (user_data["is_active"] == "✅")).classes(
-                    "mt-2")
+                role_select = (
+                    ui.select(
+                        roles,
+                        label="Rolle",
+                        value=user_data["role"] if is_edit else "user",
+                    )
+                    .classes("w-full")
+                    .props("outlined dense")
+                )
+                active_toggle = ui.checkbox(
+                    "Benutzer ist aktiv",
+                    value=True if not is_edit else (user_data["is_active"] == "✅"),
+                ).classes("mt-2")
 
             def save() -> None:
                 if not username.value:
@@ -132,7 +188,9 @@ def users_page() -> None:
 
             with ui.row().classes("mt-6 gap-2 justify-end w-full"):
                 ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                ui.button("Speichern", on_click=save).props("unelevated").classes("bg-[#0078d4] text-white")
+                ui.button("Speichern", on_click=save).props("unelevated").classes(
+                    "bg-[#0078d4] text-white"
+                )
 
         dialog.open()
 

@@ -20,6 +20,7 @@ class AppSetting(Base):
         DateTime, nullable=True
     )  # Merkt sich, wann das letzte Auto-Backup lief
     # ── LOGGING ──
+    log_level = Column(String(20), default="WARNING")
     log_to_terminal = Column(Boolean, default=True)
     # ── STREAMING INTERVAL ──
     streaming_interval = Column(Float, default=0.5)

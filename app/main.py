@@ -11,7 +11,8 @@ from app.config import APP_TITLE, PORT, RELOAD, STORAGE_SECRET
 from app.core.auth import check_access, hash_password
 from app.core.backup import backup_on_shutdown, backup_scheduler_loop
 from app.core.database import get_session, init_db
-from app.core.logger import update_console_logger
+from app.core.logger import update_console_logger,setup_logger, set_log_level
+
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 from app.models.log_entry import init_log_db
@@ -32,8 +33,9 @@ def apply_initial_settings():
             session.add(setting)
             session.commit()
 
-        # Logger entsprechend konfigurieren
-        update_console_logger(setting.log_to_terminal)
+        if setting and setting.log_level:
+            set_log_level(setting.log_level)
+            update_console_logger(setting.log_to_terminal)
 
 
 PAGES: dict[str, Callable] = {}

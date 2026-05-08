@@ -4,7 +4,7 @@ from nicegui import ui
 from app.components.directory_picker import DirectoryPicker
 from app.core.backup import perform_backup
 from app.core.database import get_session
-from app.core.logger import update_console_logger
+from app.core.logger import set_log_level, update_console_logger
 from app.models.app_setting import AppSetting
 
 
@@ -27,6 +27,7 @@ def app_settings_page() -> None:
         current_backup_schedule = setting.backup_schedule
         # LOGGING
         current_log_terminal = setting.log_to_terminal
+        current_log_level = setting.log_level or "WARNING"
         # STREAMING INTERVAL
         current_streaming_interval = setting.streaming_interval
         # UPLOAD DIRECTORIES
@@ -123,6 +124,14 @@ def app_settings_page() -> None:
             # -- LOGGING--
             ui.separator().props("dense")
             ui.label("Log-Konfiguration").classes("font-medium text-slate-700")
+            log_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            level_select = ui.select(
+                options=log_levels,
+                label="Aktives Log-Level",
+                value=current_log_level,
+                # Sofortige Anpassung bei Wechsel:
+                on_change=lambda e: set_log_level(e.value)
+            ).classes("w-48").props('outlined dense')
             terminal_toggle = ui.switch(
                 "Logs zusätzlich im Terminal ausgeben", value=current_log_terminal
             ).classes("text-slate-700")
@@ -147,6 +156,7 @@ def app_settings_page() -> None:
                 s.backup_path = backup_input.value
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value
+                s.log_level = level_select.value
                 s.log_to_terminal = terminal_toggle.value
                 s.streaming_interval = streaming_interval.value
                 session.commit()
