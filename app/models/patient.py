@@ -98,6 +98,8 @@ class PatientSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
 
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     date = Column(Date, nullable=False)
     time_from = Column(String(5))  # Format: "HH:MM"
     time_to = Column(String(5))  # Format: "HH:MM"
@@ -116,3 +118,4 @@ class PatientSession(Base):
     patient = relationship("Patient", back_populates="sessions")
     payment_method = relationship("PaymentMethod", back_populates="sessions")
     vat_setting = relationship("VATSetting", back_populates="sessions")
+    user = relationship("User")

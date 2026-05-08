@@ -1,10 +1,10 @@
 # app/core/document_data.py
-from datetime import datetime
-
+from nicegui import app as nicegui_app
 from sqlalchemy.orm import Session
 
 from app.models.company_setting import CompanyProfile
 from app.models.patient import Patient, PatientSession
+from app.models.user import User
 
 # ── 1. ZENTRALE PLATZHALTER DOKUMENTATION FÜR DAS UI ──
 PLACEHOLDERS = {
@@ -35,12 +35,20 @@ PLACEHOLDERS = {
         "{{p_ort}}",
         "{{p_geburtsdatum}}",
     ],
-    "Sitzung / Finanzen": [
-        "{{s_datum}}",
-        "{{s_betrag_netto}}",
-        "{{s_mwst_satz}}",
-        "{{s_betrag_brutto}}",
-        "{{s_anliegen}}",
+    "Summen (Für Sammelrechnung)": ["{{total_netto}}", "{{total_brutto}}"],
+    "Sitzungs-Details (Für Tabellen-Schleife)": [
+        "{{s.s_datum}}",
+        "{{s.u_vorname}}",
+        "{{s.u_nachname}}",
+        "{{s.s_betrag_netto}}",
+        "{{s.s_mwst_satz}}",
+        "{{s.s_betrag_brutto}}",
+        "{{s.s_anliegen}}",
+    ],
+    "Druck-Info (Benutzer, der das Dokument druckt)": [
+        "{{print_u_vorname}}",
+        "{{print_u_nachname}}",
+        "{{print_u_name}}",
     ],
     "System & Datum": ["{{heute}}"],
 }
@@ -52,7 +60,7 @@ def get_company_context(session: Session) -> dict:
     company = session.query(CompanyProfile).first()
     if not company:
         return {}
-    print(company.iban)
+
     return {
         "firma_name": company.name or "",
         "firma_strasse": company.street or "",
@@ -71,6 +79,8 @@ def get_company_context(session: Session) -> dict:
         "zahlungsziel": company.payment_terms_days or "",
         "brutto_netto": company.payment_terms_mode or "",
     }
+
+
 def get_salutation(salutation):
     match salutation:
         case "Männlich":
@@ -79,6 +89,7 @@ def get_salutation(salutation):
             return "Frau"
         case _:
             return ""
+
 
 def get_patient_context(patient: Patient) -> dict:
     """Sammelt alle Patientendaten."""
@@ -101,16 +112,33 @@ def get_patient_context(patient: Patient) -> dict:
         "p_ort": main_address.city if main_address else "",
     }
 
-def get_sessions_context(db_sessions: list[PatientSession]) -> dict:
-    """Sammelt Daten aus einer Liste von Sitzungen inkl. Summen (Sammelrechnung)."""
+
+def get_sessions_context(
+    db_sessions: list[PatientSession], db_session: Session
+) -> dict:
+    """
+    Sammelt Daten aus einer Liste von Sitzungen inkl. Summen.
+    Zusätzlich werden Behandler (aus der Session) und der aktuell druckende Benutzer geladen.
+    """
     if not db_sessions:
         return {"sessions": [], "total_netto": "0.00", "total_brutto": "0.00"}
+
+    # 1. Den aktuell druckenden Benutzer ermitteln
+    printing_user_id = nicegui_app.storage.user.get("user_id")
+    print_u = (
+        db_session.query(User).filter_by(id=printing_user_id).first()
+        if printing_user_id
+        else None
+    )
 
     sessions_data = []
     total_net = 0.0
     total_gross = 0.0
 
     for p_session in db_sessions:
+        # Der Benutzer, der die Sitzung durchgeführt hat (Behandler)
+        u = p_session.user
+
         vat_rate = p_session.vat_setting.rate if p_session.vat_setting else 0.0
         brutto = p_session.amount * (1 + (vat_rate / 100))
 
@@ -122,6 +150,8 @@ def get_sessions_context(db_sessions: list[PatientSession]) -> dict:
                 "s_datum": (
                     p_session.date.strftime("%d.%m.%Y") if p_session.date else ""
                 ),
+                "u_vorname": u.first_name if u else "",
+                "u_nachname": u.last_name if u else "",
                 "s_betrag_netto": f"{p_session.amount:.2f}",
                 "s_mwst_satz": f"{vat_rate}%",
                 "s_betrag_brutto": f"{brutto:.2f}",
@@ -129,8 +159,16 @@ def get_sessions_context(db_sessions: list[PatientSession]) -> dict:
             }
         )
 
+    # Rückgabe des Context-Dicts
     return {
         "sessions": sessions_data,
         "total_netto": f"{total_net:.2f}",
         "total_brutto": f"{total_gross:.2f}",
+        "print_u_vorname": print_u.first_name if print_u else "",
+        "print_u_nachname": print_u.last_name if print_u else "",
+        "print_u_name": (
+            f"{print_u.first_name or ''} {print_u.last_name or ''}".strip()
+            if print_u
+            else ""
+        ),
     }

@@ -16,6 +16,7 @@ from app.core.document_data import (
     get_patient_context,
     get_sessions_context,
 )
+from app.core.logger import app_logger
 from app.models.app_setting import AppSetting
 from app.models.company_setting import DocumentTemplate
 from app.models.patient import Patient, PatientSession
@@ -65,7 +66,7 @@ class DocumentEngine:
 
             if not tpl_record or not os.path.exists(tpl_record.file_path):
                 raise FileNotFoundError(
-                    f"Keine aktive Vorlage für '{doc_type}' gefunden."
+                    app_logger.error(f"Keine aktive Vorlage für '{doc_type}' gefunden.")
                 )
 
             # 2. Daten sammeln über unsere NEUE zentrale Logik
@@ -82,7 +83,7 @@ class DocumentEngine:
                     .order_by(PatientSession.date)
                     .all()
                 )
-                context.update(get_sessions_context(db_sessions))
+                context.update(get_sessions_context(db_sessions, db_session))
 
             # 3. Word-Datei generieren
             doc = DocxTemplate(tpl_record.file_path)
@@ -98,7 +99,7 @@ class DocumentEngine:
                 try:
                     return self._convert_to_pdf(docx_path)
                 except Exception as e:
-                    print(f"PDF Konvertierung fehlgeschlagen: {e}")
+                    app_logger.error(f"PDF Konvertierung fehlgeschlagen: {e}")
                     return docx_path
 
             return docx_path

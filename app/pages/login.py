@@ -50,6 +50,7 @@ def login_page() -> None:
 
             # ✅ Einloggen: User-Daten in Session speichern
             app.storage.user["authenticated"] = True
+            app.storage.user["user_id"] = user.id
             app.storage.user["username"] = user.username
             app.storage.user["role"] = user.role
 

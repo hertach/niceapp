@@ -7,14 +7,11 @@ import tempfile
 import urllib.request
 import zipfile
 from datetime import date, datetime
-
-from nicegui import app as nicegui_app
-from nicegui import ui
+from nicegui import app as nicegui_app, ui
+from app.core.logger import app_logger
 from sqlalchemy.orm import joinedload
-
 from app.components.document_dialog import open_document_dialog
 from app.core.database import get_session
-from app.core.document_engine import DocumentEngine
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 from app.models.finance_setting import PaymentMethod, VATSetting
@@ -31,21 +28,21 @@ from app.models.patient import (
 try:
     from faster_whisper import WhisperModel
 
-    print("Lade Whisper-Modell...")
+    app_logger.info("Lade Whisper-Modell...")
     whisper_model = WhisperModel("small", device="cpu", compute_type="default")
-    print("Whisper-Modell erfolgreich geladen!")
+    app_logger.info("Whisper-Modell erfolgreich geladen!")
 except ImportError:
     whisper_model = None
-    print("FEHLER: faster-whisper ist nicht installiert!")
+    app_logger.error("FEHLER: faster-whisper ist nicht installiert!")
 
 # ── 2. KI INITIALISIERUNG (VOSK FÜR LIVE-STREAMING) ──
 try:
     import vosk
 
-    print("Prüfe Vosk-Modell...")
+    app_logger.info("Prüfe Vosk-Modell...")
     VOSK_DIR = "vosk-model-small-de-0.15"
     if not os.path.exists(VOSK_DIR):
-        print("Lade deutsches Vosk-Modell herunter (45 MB) - bitte kurz warten...")
+        app_logger.info("Lade deutsches Vosk-Modell herunter (45 MB) - bitte kurz warten...")
         urllib.request.urlretrieve(
             "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip",
             "vosk.zip",
@@ -56,10 +53,10 @@ try:
 
     vosk.SetLogLevel(-1)
     vosk_model = vosk.Model(VOSK_DIR)
-    print("Vosk (Streaming) erfolgreich geladen!")
+    app_logger.info("Vosk (Streaming) erfolgreich geladen!")
 except Exception as e:
     vosk_model = None
-    print(f"Vosk Info: {e}. (Live-Streaming deaktiviert)")
+    app_logger.error(f"Vosk Info: {e}. (Live-Streaming deaktiviert)")
 
 
 def patient_detail_page(navigate) -> None:
@@ -161,6 +158,7 @@ def patient_detail_page(navigate) -> None:
     try:
         load_data()
     except Exception as e:
+        app_logger.error(f"Datenbankfehler: {e}", type="negative")
         ui.notify(f"Datenbankfehler: {e}", type="negative")
 
     # ── HYBRID-TRANSKRIBIERUNG (VOSK LIVE + WHISPER FINAL) ──
@@ -256,6 +254,7 @@ def patient_detail_page(navigate) -> None:
 
         if state["recording_field"] is None:
             if not vosk_model:
+                app_logger.info("Live-Stream inaktiv, Whisper finalisiert am Ende.")
                 ui.notify(
                     "Info: Live-Stream inaktiv, Whisper finalisiert am Ende.",
                     type="warning",
@@ -315,6 +314,7 @@ def patient_detail_page(navigate) -> None:
                                 "return await window.getNewPcmData();", timeout=5.0
                             )
                         except Exception as e:
+                            app_logger.error(e)
                             continue
 
                         if b64_pcm:
@@ -406,11 +406,13 @@ def patient_detail_page(navigate) -> None:
                                 area.value = final_text
 
                     except Exception as e:
+                        app_logger.error(f"Whisper Fehler: {e}")
                         print(f"Whisper Fehler: {e}")
                     finally:
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)
             except Exception as e:
+                app_logger.error(f"Whisper Fehler: {e}")
                 print(f"JavaScript Fehler: {e}")
             finally:
                 if btn:
@@ -738,6 +740,7 @@ def patient_detail_page(navigate) -> None:
                     )
                 else:
                     s = PatientSession(patient_id=patient_id)
+                    s.user_id = nicegui_app.storage.user.get("user_id")
                     session.add(s)
 
                 s.date = datetime.strptime(state["sess_date"], "%Y-%m-%d").date()
@@ -1456,40 +1459,25 @@ def patient_detail_page(navigate) -> None:
                                 billing_table.add_slot(
                                     "body-cell-actions",
                                     r"""
-
                                                         <q-td :props="props">
-
                                                             <div class="row items-center justify-end no-wrap gap-1">
-
                                                                 <q-btn v-if="props.row.is_paid" flat round dense icon="print" color="primary" @click="$parent.$emit('print_receipt', props.row)">
-
                                                                     <q-tooltip>Quittung drucken</q-tooltip>
-
                                                                 </q-btn>
-
                                                                 <q-btn v-if="!props.row.is_paid" flat round dense icon="check_circle" color="positive" @click="$parent.$emit('mark_paid', props.row.id)">
-
                                                                     <q-tooltip>Als bezahlt markieren</q-tooltip>
-
                                                                 </q-btn>
-
                                                             </div>
-
                                                         </q-td>
-
                                                     """,
                                 )
 
                                 billing_table.add_slot(
                                     "body-selection",
                                     r"""
-
                                                         <q-td :auto-width="true">
-
                                                             <q-checkbox :class="{ 'invisible': props.row.is_paid }" v-model="props.selected" color="primary" />
-
                                                         </q-td>
-
                                                     """,
                                 )
 
@@ -1525,18 +1513,12 @@ def patient_detail_page(navigate) -> None:
 
                                     main_content.refresh()
 
-                                # WICHTIG: Perfekt eingerückt im 'else'-Block!
-
                                 billing_table.on("print_receipt", print_receipt)
-
                                 billing_table.on("mark_paid", mark_as_paid)
-
                                 billing_table.add_slot(
                                     "body-row",
                                     r"""
-
                                                         <q-tr :props="props" :class="props.row.is_paid ? 'bg-slate-50 text-slate-500' : ''">
-
                                                             <q-td v-for="col in props.cols" :key="col.name" :props="props">
                                                                 {{ col.value }}
                                                             </q-td>
