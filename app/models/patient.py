@@ -108,6 +108,7 @@ class PatientSession(Base):
     approach = Column(Text)  # Lösungsansatz
     protocol = Column(Text)  # Protokoll
 
+    booking_text = Column(String(255), nullable=True)
     payment_method_id = Column(Integer, ForeignKey("payment_methods.id"), nullable=True)
     vat_id = Column(Integer, ForeignKey("vat_settings.id"), nullable=True)
     is_paid = Column(Boolean, default=False)

@@ -9,7 +9,7 @@ from app.pages.admin.menu_items import menu_items_page
 from app.pages.admin.roles import roles_page
 from app.pages.admin.template_settings import template_settings_page
 from app.pages.admin.users import users_page
-
+from app.pages.admin.accounting_settings import accounting_settings_page
 
 def settings_page() -> None:
     # State-Variable, um sich den aktuellen Tab zu merken
@@ -63,6 +63,7 @@ def settings_page() -> None:
             menu_item("company_settings", "Firmenangaben", "business")
             menu_item("template_settings", "Vorlagen", "description")
             menu_item("finance_settings", "Finanz-Einstellungen", "price_change")
+            menu_item("accounting_settings", "Buchhaltung", "account_balance")
             menu_item("app_settings", "App-Einstellungen", "settings_applications")
             menu_item("logs", "System-Logs", "list_alt")
 
@@ -89,6 +90,8 @@ def settings_page() -> None:
                 template_settings_page()
             elif tab_id == "finance_settings":
                 finance_settings_page()
+            elif tab_id == "accounting_settings":
+                accounting_settings_page()
             elif tab_id == "app_settings":
                 app_settings_page()
             elif tab_id == "logs":

@@ -11,6 +11,7 @@ from app.config import APP_TITLE, PORT, RELOAD, STORAGE_SECRET
 from app.core.auth import check_access, hash_password
 from app.core.backup import backup_on_shutdown, backup_scheduler_loop
 from app.core.database import get_session, init_db
+from app.core.accounting_setup import seed_accounting_basics
 from app.core.logger import update_console_logger,setup_logger, set_log_level
 
 from app.core.speech import SpeechManager
@@ -37,6 +38,7 @@ def apply_initial_settings():
             set_log_level(setting.log_level)
             update_console_logger(setting.log_to_terminal)
 
+        seed_accounting_basics(session)
 
 PAGES: dict[str, Callable] = {}
 
@@ -48,21 +50,9 @@ def page(path: str) -> Callable:
 
     return decorator
 
-
-# ── Seiten registrieren ────────────────────────────────────────────────────────
-# WICHTIG: navigate wird erst innerhalb von index() definiert,
-# daher als Lambda mit spätem Binding
-
-
 @page("/")
 def _dashboard() -> None:
     pass  # wird unten via _render_page überschrieben – siehe Hinweis
-
-
-# @page('/patients')
-# def _patients() -> None:
-#     patients_page()
-
 
 @page("/admin/settings")
 def _settings() -> None:
