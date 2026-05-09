@@ -82,6 +82,7 @@ def patient_detail_page(navigate) -> None:
         "sess_issue": "",
         "sess_approach": "",
         "sess_protocol": "",
+        "sess_booking_text": "",
         "sess_payment_method_id": None,
         "sess_vat_id": None,
         "sess_is_paid": False,
@@ -158,7 +159,7 @@ def patient_detail_page(navigate) -> None:
     try:
         load_data()
     except Exception as e:
-        app_logger.error(f"Datenbankfehler: {e}", type="negative")
+        app_logger.error(f"Datenbankfehler: {e}")
         ui.notify(f"Datenbankfehler: {e}", type="negative")
 
     # ── HYBRID-TRANSKRIBIERUNG (VOSK LIVE + WHISPER FINAL) ──
@@ -709,6 +710,10 @@ def patient_detail_page(navigate) -> None:
 
         ui.separator().classes("my-4")
 
+        ui.input("Buchungstext").bind_value(state, "sess_booking_text").classes(
+            "w-full mb-2"
+        ).props("outlined dense")
+
         with ui.row().classes("w-full gap-4 mb-4 items-center"):
             pm_select = (
                 ui.select({}, label="Bezahlmethode")
@@ -749,6 +754,7 @@ def patient_detail_page(navigate) -> None:
                 s.issue = state["sess_issue"]
                 s.approach = state["sess_approach"]
                 s.protocol = state["sess_protocol"]
+                s.booking_text = state["sess_booking_text"] or None
 
                 s.payment_method_id = state["sess_payment_method_id"]
                 s.vat_id = state["sess_vat_id"]
@@ -807,6 +813,10 @@ def patient_detail_page(navigate) -> None:
                 "sess_issue": getattr(s, "issue", ""),
                 "sess_approach": getattr(s, "approach", ""),
                 "sess_protocol": getattr(s, "protocol", ""),
+                "sess_booking_text": (
+                    getattr(s, "booking_text", None)
+                    or f"Sitzung {state['first_name']} {state['last_name']}".strip()
+                ),
                 "sess_payment_method_id": getattr(s, "payment_method_id", None),
                 "sess_vat_id": getattr(s, "vat_id", None),
                 "sess_is_paid": getattr(s, "is_paid", False),
@@ -1227,8 +1237,9 @@ def patient_detail_page(navigate) -> None:
                                             if s.vat_setting
                                             else "Keine MwSt"
                                         )
+                                        booking_info = f" | {s.booking_text}" if s.booking_text else ""
                                         ui.label(
-                                            f"Abrechnung: {pm_title} | {vat_desc}"
+                                            f"Abrechnung: {pm_title} | {vat_desc}{booking_info}"
                                         ).classes("text-xs text-slate-500 font-medium")
 
                                         with ui.row().classes("gap-2"):
