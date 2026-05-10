@@ -7,11 +7,14 @@ import tempfile
 import urllib.request
 import zipfile
 from datetime import date, datetime
-from nicegui import app as nicegui_app, ui
-from app.core.logger import app_logger
+
+from nicegui import app as nicegui_app
+from nicegui import ui
 from sqlalchemy.orm import joinedload
+
 from app.components.document_dialog import open_document_dialog
 from app.core.database import get_session
+from app.core.logger import app_logger
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 from app.models.finance_setting import PaymentMethod, VATSetting
@@ -42,7 +45,9 @@ try:
     app_logger.info("Prüfe Vosk-Modell...")
     VOSK_DIR = "vosk-model-small-de-0.15"
     if not os.path.exists(VOSK_DIR):
-        app_logger.info("Lade deutsches Vosk-Modell herunter (45 MB) - bitte kurz warten...")
+        app_logger.info(
+            "Lade deutsches Vosk-Modell herunter (45 MB) - bitte kurz warten..."
+        )
         urllib.request.urlretrieve(
             "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip",
             "vosk.zip",
@@ -1237,7 +1242,11 @@ def patient_detail_page(navigate) -> None:
                                             if s.vat_setting
                                             else "Keine MwSt"
                                         )
-                                        booking_info = f" | {s.booking_text}" if s.booking_text else ""
+                                        booking_info = (
+                                            f" | {s.booking_text}"
+                                            if s.booking_text
+                                            else ""
+                                        )
                                         ui.label(
                                             f"Abrechnung: {pm_title} | {vat_desc}{booking_info}"
                                         ).classes("text-xs text-slate-500 font-medium")

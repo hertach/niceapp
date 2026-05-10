@@ -125,13 +125,17 @@ def app_settings_page() -> None:
             ui.separator().props("dense")
             ui.label("Log-Konfiguration").classes("font-medium text-slate-700")
             log_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-            level_select = ui.select(
-                options=log_levels,
-                label="Aktives Log-Level",
-                value=current_log_level,
-                # Sofortige Anpassung bei Wechsel:
-                on_change=lambda e: set_log_level(e.value)
-            ).classes("w-48").props('outlined dense')
+            level_select = (
+                ui.select(
+                    options=log_levels,
+                    label="Aktives Log-Level",
+                    value=current_log_level,
+                    # Sofortige Anpassung bei Wechsel:
+                    on_change=lambda e: set_log_level(e.value),
+                )
+                .classes("w-48")
+                .props("outlined dense")
+            )
             terminal_toggle = ui.switch(
                 "Logs zusätzlich im Terminal ausgeben", value=current_log_terminal
             ).classes("text-slate-700")

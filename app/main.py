@@ -8,12 +8,11 @@ from nicegui import ui
 
 from app.components.layout import _apply_active, _apply_inactive, main_layout
 from app.config import APP_TITLE, PORT, RELOAD, STORAGE_SECRET
+from app.core.accounting_setup import seed_accounting_basics
 from app.core.auth import check_access, hash_password
 from app.core.backup import backup_on_shutdown, backup_scheduler_loop
 from app.core.database import get_session, init_db
-from app.core.accounting_setup import seed_accounting_basics
-from app.core.logger import update_console_logger,setup_logger, set_log_level
-
+from app.core.logger import set_log_level, setup_logger, update_console_logger
 from app.core.speech import SpeechManager
 from app.models.app_setting import AppSetting
 from app.models.log_entry import init_log_db
@@ -40,6 +39,7 @@ def apply_initial_settings():
 
         seed_accounting_basics(session)
 
+
 PAGES: dict[str, Callable] = {}
 
 
@@ -50,9 +50,11 @@ def page(path: str) -> Callable:
 
     return decorator
 
+
 @page("/")
 def _dashboard() -> None:
     pass  # wird unten via _render_page überschrieben – siehe Hinweis
+
 
 @page("/admin/settings")
 def _settings() -> None:

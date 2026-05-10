@@ -1,6 +1,7 @@
 # app/pages/admin/settings.py
 from nicegui import ui
 
+from app.pages.admin.accounting_settings import accounting_settings_page
 from app.pages.admin.app_settings import app_settings_page
 from app.pages.admin.company_settings import company_settings_page
 from app.pages.admin.finance_settings import finance_settings_page
@@ -9,7 +10,7 @@ from app.pages.admin.menu_items import menu_items_page
 from app.pages.admin.roles import roles_page
 from app.pages.admin.template_settings import template_settings_page
 from app.pages.admin.users import users_page
-from app.pages.admin.accounting_settings import accounting_settings_page
+
 
 def settings_page() -> None:
     # State-Variable, um sich den aktuellen Tab zu merken

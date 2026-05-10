@@ -34,6 +34,7 @@ console_handler.setFormatter(
     logging.Formatter("[%(levelname)s] [%(filename)s:%(funcName)s] %(message)s")
 )
 
+
 def set_log_level(level: str) -> None:
     """Ändert das Log-Level des globalen Loggers zur Laufzeit."""
     logger = logging.getLogger("niceapp")
@@ -44,7 +45,7 @@ def set_log_level(level: str) -> None:
         "INFO": logging.INFO,
         "WARNING": logging.WARNING,
         "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL
+        "CRITICAL": logging.CRITICAL,
     }
 
     # Sicherstellen, dass das Level gültig ist, ansonsten Fallback auf WARNING
@@ -52,6 +53,7 @@ def set_log_level(level: str) -> None:
     logger.setLevel(numeric_level)
 
     logger.info(f"Loglevel wurde auf {level} geändert.")
+
 
 def setup_logger():
     """Initialisiert den globalen Logger der App."""
