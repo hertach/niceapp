@@ -7,6 +7,7 @@ from app.components.inputs import date_input
 from app.core.database import get_session
 from app.core.logger import app_logger
 from app.models.finance_setting import PaymentMethod, VATSetting
+from app.models.accounting import Account
 
 
 def finance_settings_page() -> None:
@@ -108,7 +109,9 @@ def finance_settings_page() -> None:
                         "id": r.id,
                         "title": r.title,
                         "is_active": r.is_active,
-                        # Wichtig: status_label hinzufügen, da deine UI-Tabelle danach sucht!
+                        "account_number": r.account.account_number if r.account else "-",
+                        "account_name": r.account.name if r.account else "Kein Konto zugewiesen",
+                        "account_id": r.account_id,
                         "status_label": "Aktiv" if r.is_active else "Inaktiv",
                     }
                 )
@@ -154,11 +157,46 @@ def finance_settings_page() -> None:
         except Exception as e:
             ui.notify(f"Fehler beim Speichern: {e}", type="negative")
 
-    def open_pm_dialog(pm_id=None, current_title=""):
-        """Öffnet den Dialog und füllt ihn ggf. mit bestehenden Daten."""
-        pm_state["id"] = pm_id
-        title_input.value = current_title
-        pm_dialog.open()
+    def open_pm_dialog(pm_id=None, current_title="", current_account_id=None):
+        with ui.dialog() as diag, ui.card().classes("w-96"):
+            ui.label("Zahlart bearbeiten" if pm_id else "Neue Zahlart").classes("text-lg font-bold")
+
+            # 1. Name der Zahlart
+            name_input = ui.input("Bezeichnung", value=current_title).classes("w-full").props("outlined dense")
+
+            # 2. Konten für das Suchfeld laden
+            with get_session() as session:
+                accounts = session.query(Account).order_by(Account.account_number).all()
+                # Wir erstellen ein Dictionary für das Dropdown: {ID: "Nummer - Name"}
+                acc_options = {a.id: f"{a.account_number} - {a.name}" for a in accounts}
+
+            # 3. Das Suchfeld (Searchable Select)
+            account_selection = ui.select(
+                options=acc_options,
+                label="Buchungskonto",
+                value=current_account_id,
+                with_input=True  # Macht es zum Suchfeld
+            ).classes("w-full").props("outlined dense")
+
+            with ui.row().classes("w-full justify-end mt-4"):
+                ui.button("Abbrechen", on_click=diag.close).props("flat")
+
+                def save():
+                    with get_session() as session:
+                        if pm_id:
+                            pm = session.query(PaymentMethod).get(pm_id)
+                            pm.title = name_input.value
+                            pm.account_id = account_selection.value
+                        else:
+                            new_pm = PaymentMethod(title=name_input.value, account_id=account_selection.value)
+                            session.add(new_pm)
+                        session.commit()
+                    diag.close()
+                    ui.notify("Zahlart gespeichert")
+                    # Hier müsste ggf. die Tabelle aktualisiert werden
+
+                ui.button("Speichern", on_click=save).props("unelevated color=primary")
+        diag.open()
 
     # ── VAT: Modal / Dialog ─────────────────────────────────────────
     with ui.dialog() as vat_dialog, ui.card().classes("w-[400px]"):
@@ -295,6 +333,13 @@ def finance_settings_page() -> None:
                         "align": "left",
                     },
                     {
+                        "name": "account_number",
+                        "label": "Konto",
+                        "field": "account_number",
+                        "align": "left",
+                    },
+                    {"name": "account_name", "label": "Kontobezeichnung", "field": "account_name", "align": "left"},
+                    {
                         "name": "status",
                         "label": "Status",
                         "field": "status_label",
@@ -336,9 +381,11 @@ def finance_settings_page() -> None:
             )
 
             # Event-Listener für die Table-Actions
-            pm_table.on(
-                "edit_pm", lambda msg: open_pm_dialog(msg.args["id"], msg.args["title"])
-            )
+            pm_table.on("edit_pm", lambda msg: open_pm_dialog(
+                msg.args["id"],
+                msg.args["title"],
+                msg.args.get("account_id")  # Hier die ID mitgeben
+            ))
             pm_table.on("toggle_pm", lambda msg: toggle_pm_status(msg.args))
 
             # Styling für inaktive Zeilen

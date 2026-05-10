@@ -37,7 +37,7 @@ class Account(Base):
     is_active = Column(Boolean, default=True)
 
     lines = relationship("JournalEntryLine", back_populates="account")
-
+    payment_method = relationship("PaymentMethod", back_populates="account")
     def __repr__(self) -> str:
         return f"<Account {self.account_number} - {self.name}>"
 

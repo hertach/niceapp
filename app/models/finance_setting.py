@@ -20,6 +20,8 @@ class PaymentMethod(Base):
     __tablename__ = "payment_methods"
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)  # z.B. "Bar", "Karte", "Rechnung"
+    account_id = Column(Integer, ForeignKey("accounting_accounts.id"), nullable=True)
     is_active = Column(Boolean, default=True)
 
+    account = relationship("Account", back_populates="payment_method")
     sessions = relationship("PatientSession", back_populates="payment_method")
