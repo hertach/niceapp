@@ -114,6 +114,11 @@ class PatientSession(Base):
     is_paid = Column(Boolean, default=False)
     amount = Column(Float, default=0.0)
 
+    is_invoiced = Column(Boolean, default=False)
+    invoice_number = Column(String(50), nullable=True)
+    invoice_version = Column(Integer, default=0)
+
+    is_closed = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)  # Für Soft-Delete
 
     patient = relationship("Patient", back_populates="sessions")

@@ -13,6 +13,7 @@ from nicegui import ui
 from sqlalchemy.orm import joinedload
 
 from app.components.document_dialog import open_document_dialog
+from app.core.accounting_logic import book_patient_session
 from app.core.database import get_session
 from app.core.logger import app_logger
 from app.core.speech import SpeechManager
@@ -88,6 +89,7 @@ def patient_detail_page(navigate) -> None:
         "sess_approach": "",
         "sess_protocol": "",
         "sess_booking_text": "",
+        "sess_is_closed": False,
         "sess_payment_method_id": None,
         "sess_vat_id": None,
         "sess_is_paid": False,
@@ -738,9 +740,10 @@ def patient_detail_page(navigate) -> None:
             ).props('outlined dense type="number" step="0.05"')
             ui.checkbox("Bezahlt").bind_value(state, "sess_is_paid")
 
-        def save_session():
+        def _do_save(is_closed: bool = False):
             if not state["sess_date"]:
-                return ui.notify("Datum ist Pflichtfeld", type="warning")
+                ui.notify("Datum ist Pflichtfeld", type="warning")
+                return None
             with get_session() as session:
                 if state["sess_id"]:
                     s = (
@@ -760,6 +763,11 @@ def patient_detail_page(navigate) -> None:
                 s.approach = state["sess_approach"]
                 s.protocol = state["sess_protocol"]
                 s.booking_text = state["sess_booking_text"] or None
+                if is_closed:
+                    try:
+                        s.is_closed = True
+                    except Exception:
+                        pass  # Feld noch nicht migriert – wird ignoriert
 
                 s.payment_method_id = state["sess_payment_method_id"]
                 s.vat_id = state["sess_vat_id"]
@@ -767,18 +775,56 @@ def patient_detail_page(navigate) -> None:
 
                 try:
                     s.amount = float(state["sess_amount"])
-                except:
+                except Exception:
                     s.amount = 0.0
 
+                session.flush()
+                saved_id = s.id
                 session.commit()
-            sess_dlg.close()
-            load_data()
-            main_content.refresh()
+                try:
+                    book_patient_session(session, s.id)
+                    session.commit()
+                except Exception as e:
+                    app_logger.error(f"Buchungsfehler im Dialog: {e}")
+            return saved_id
 
-        with ui.row().classes("w-full justify-end gap-2"):
-            ui.button("Speichern", on_click=save_session).props(
-                'unelevated color="primary"'
-            )
+        def save_session():
+            """Speichern ohne Abschluss."""
+            if _do_save(is_closed=False) is not None:
+                sess_dlg.close()
+                load_data()
+                main_content.refresh()
+
+        def close_session():
+            """Sitzung abschliessen (Status → Abgeschlossen)."""
+            if _do_save(is_closed=True) is not None:
+                sess_dlg.close()
+                load_data()
+                main_content.refresh()
+
+        def create_invoice_from_session():
+            """Sitzung abschliessen und direkt Rechnungsauswahl öffnen."""
+            saved_id = _do_save(is_closed=True)
+            if saved_id is not None:
+                sess_dlg.close()
+                load_data()
+                main_content.refresh()
+                open_invoice_selection(preselect_id=saved_id)
+
+        with ui.row().classes("w-full justify-between items-center gap-2 mt-2"):
+            ui.button("Abbrechen", on_click=sess_dlg.close).props('flat color="grey"')
+            with ui.row().classes("gap-2"):
+                ui.button("Speichern", on_click=save_session).props(
+                    'outline color="primary"'
+                )
+                ui.button(
+                    "Abschliessen", icon="task_alt", on_click=close_session
+                ).props('outline color="positive"')
+                ui.button(
+                    "Rechnung erstellen",
+                    icon="receipt_long",
+                    on_click=create_invoice_from_session,
+                ).props('unelevated color="primary"')
 
     def open_session(s=None):
         with get_session() as db:
@@ -822,6 +868,7 @@ def patient_detail_page(navigate) -> None:
                     getattr(s, "booking_text", None)
                     or f"Sitzung {state['first_name']} {state['last_name']}".strip()
                 ),
+                "sess_is_closed": getattr(s, "is_closed", False) if s else False,
                 "sess_payment_method_id": getattr(s, "payment_method_id", None),
                 "sess_vat_id": getattr(s, "vat_id", None),
                 "sess_is_paid": getattr(s, "is_paid", False),
@@ -829,6 +876,115 @@ def patient_detail_page(navigate) -> None:
             }
         )
         sess_dlg.open()
+
+    # ── RECHNUNGSAUSWAHL-DIALOG ──
+    invoice_selection_dlg = ui.dialog()
+
+    def open_invoice_selection(preselect_id: int = None):
+        """Zeigt alle offenen/abgeschlossenen Sitzungen zur Auswahl für die Rechnung."""
+        with get_session() as db:
+            open_sess = (
+                db.query(PatientSession)
+                .filter_by(patient_id=patient_id, is_deleted=False, is_paid=False)
+                .order_by(PatientSession.date.desc())
+                .all()
+            )
+            rows = [
+                {
+                    "id": s.id,
+                    "date": s.date.strftime("%d.%m.%Y") if s.date else "",
+                    "text": s.booking_text
+                    or f"Sitzung {state['first_name']} {state['last_name']}",
+                    "status": (
+                        "Abgeschlossen" if getattr(s, "is_closed", False) else "Offen"
+                    ),
+                    "amount": f"CHF {s.amount:.2f}",
+                    "preselected": s.id == preselect_id,
+                }
+                for s in open_sess
+            ]
+
+        invoice_selection_dlg.clear()
+        with (
+            invoice_selection_dlg,
+            ui.card().classes("p-6 min-w-[720px] max-w-[960px]"),
+        ):
+            ui.label("Sitzungen für Rechnung auswählen").classes(
+                "text-lg font-bold mb-1"
+            )
+            ui.label(
+                "Wählen Sie alle Sitzungen, die auf diese Rechnung sollen:"
+            ).classes("text-sm text-slate-500 mb-4")
+
+            if not rows:
+                ui.label("Keine offenen Sitzungen vorhanden.").classes(
+                    "text-slate-400 italic py-4"
+                )
+                with ui.row().classes("w-full justify-end mt-4"):
+                    ui.button("Schliessen", on_click=invoice_selection_dlg.close).props(
+                        'flat color="grey"'
+                    )
+            else:
+                checks: dict[int, object] = {}
+
+                # Kopfzeile
+                with ui.row().classes(
+                    "w-full gap-3 py-2 border-b border-slate-300 text-xs font-semibold text-slate-500 uppercase"
+                ):
+                    ui.label("").classes("w-6")
+                    ui.label("Datum").classes("w-24")
+                    ui.label("Buchungstext").classes("flex-1")
+                    ui.label("Betrag").classes("w-24 text-right")
+                    ui.label("Status").classes("w-28 text-center")
+
+                for row in rows:
+                    with ui.row().classes(
+                        "w-full items-center gap-3 py-2 border-b border-slate-100 hover:bg-slate-50"
+                    ):
+                        cb = ui.checkbox(value=row["preselected"]).classes("w-6")
+                        checks[row["id"]] = cb
+                        ui.label(row["date"]).classes("w-24 text-sm font-medium")
+                        ui.label(row["text"]).classes(
+                            "flex-1 text-sm text-slate-700 truncate"
+                        )
+                        ui.label(row["amount"]).classes(
+                            "w-24 text-sm font-medium text-right"
+                        )
+                        status_cls = (
+                            "text-blue-600 bg-blue-50"
+                            if row["status"] == "Abgeschlossen"
+                            else "text-orange-600 bg-orange-50"
+                        )
+                        ui.label(row["status"]).classes(
+                            f"text-xs font-medium px-2 py-0.5 rounded w-28 text-center {status_cls}"
+                        )
+
+                def do_create_invoice():
+                    sel_ids = [sid for sid, cb in checks.items() if cb.value]
+                    if not sel_ids:
+                        ui.notify(
+                            "Bitte mindestens eine Sitzung auswählen.", type="warning"
+                        )
+                        return
+                    invoice_selection_dlg.close()
+                    open_document_dialog(
+                        doc_type="Rechnung",
+                        patient_id=patient_id,
+                        session_ids=sel_ids,
+                        on_success=lambda: main_content.refresh(),
+                    )
+
+                with ui.row().classes("w-full justify-end gap-2 mt-6"):
+                    ui.button("Abbrechen", on_click=invoice_selection_dlg.close).props(
+                        'flat color="grey"'
+                    )
+                    ui.button(
+                        "Rechnung erstellen",
+                        icon="receipt_long",
+                        on_click=do_create_invoice,
+                    ).props('unelevated color="primary"')
+
+        invoice_selection_dlg.open()
 
     def hard_delete(model_class, item_id):
         with get_session() as session:
@@ -1163,10 +1319,30 @@ def patient_detail_page(navigate) -> None:
                                     joinedload(PatientSession.vat_setting),
                                 )
                                 .filter_by(patient_id=patient_id, is_deleted=False)
+                                .order_by(PatientSession.date.desc())
                                 .all()
                             )
-
-                            sitzungen.sort(key=lambda x: x.date, reverse=True)
+                            sitzungen_data = [
+                                {
+                                    "id": s.id,
+                                    "date": (
+                                        s.date.strftime("%d.%m.%Y") if s.date else ""
+                                    ),
+                                    "booking_text": s.booking_text
+                                    or f"Sitzung {state['first_name']} {state['last_name']}",
+                                    "status": (
+                                        "Verrechnet"
+                                        if s.is_paid
+                                        else (
+                                            "Abgeschlossen"
+                                            if getattr(s, "is_closed", False)
+                                            else "Offen"
+                                        )
+                                    ),
+                                    "is_paid": s.is_paid,
+                                }
+                                for s in sitzungen
+                            ]
 
                         with ui.row().classes(
                             "w-full max-w-4xl justify-between items-center mb-6"
@@ -1174,96 +1350,130 @@ def patient_detail_page(navigate) -> None:
                             ui.label("Sitzungshistorie").classes(
                                 "text-[20px] font-medium text-[#1e3a5f]"
                             )
-                            ui.button(
-                                "Neue Sitzung",
-                                icon="add",
-                                on_click=lambda: open_session(),
-                            ).props("unelevated").classes("bg-[#0078d4] text-white")
+                            with ui.row().classes("gap-2"):
+                                ui.button(
+                                    "Rechnung erstellen",
+                                    icon="receipt_long",
+                                    on_click=lambda: open_invoice_selection(),
+                                ).props("outline").classes("text-[#0078d4]")
+                                ui.button(
+                                    "Neue Sitzung",
+                                    icon="add",
+                                    on_click=lambda: open_session(),
+                                ).props("unelevated").classes("bg-[#0078d4] text-white")
 
-                        if not sitzungen:
+                        if not sitzungen_data:
                             ui.label("Noch keine Sitzungen erfasst.").classes(
                                 "text-slate-400 italic"
                             )
+                        else:
+                            sess_columns = [
+                                {
+                                    "name": "date",
+                                    "label": "Datum",
+                                    "field": "date",
+                                    "align": "left",
+                                    "sortable": True,
+                                },
+                                {
+                                    "name": "booking_text",
+                                    "label": "Buchungstext",
+                                    "field": "booking_text",
+                                    "align": "left",
+                                },
+                                {
+                                    "name": "status",
+                                    "label": "Status",
+                                    "field": "status",
+                                    "align": "center",
+                                },
+                                {
+                                    "name": "actions",
+                                    "label": "Aktionen",
+                                    "field": "id",
+                                    "align": "right",
+                                },
+                            ]
 
-                        for s in sitzungen:
-                            date_str = s.date.strftime("%d.%m.%Y")
-                            time_str = (
-                                f" | {s.time_from} - {s.time_to} Uhr"
-                                if (s.time_from and s.time_to)
-                                else ""
+                            sess_table = ui.table(
+                                columns=sess_columns,
+                                rows=sitzungen_data,
+                                row_key="id",
+                            ).classes(
+                                "w-full max-w-4xl shadow-sm border border-slate-200 bg-white"
                             )
-                            paid_str = "Bezahlt" if s.is_paid else "Offen"
 
-                            vat_rate = s.vat_setting.rate if s.vat_setting else 0.0
-                            gross_amount = s.amount * (1 + vat_rate / 100)
+                            sess_table.add_slot(
+                                "body-cell-status",
+                                r"""
+                                <q-td :props="props">
+                                    <q-badge
+                                        :color="props.row.status === 'Verrechnet' ? 'positive' : props.row.status === 'Abgeschlossen' ? 'primary' : 'warning'"
+                                        :label="props.row.status"
+                                        class="text-xs"
+                                    />
+                                </q-td>
+                                """,
+                            )
 
-                            header_text = f"{date_str}{time_str} | CHF {gross_amount:.2f} ({paid_str})"
+                            sess_table.add_slot(
+                                "body-cell-actions",
+                                r"""
+                                <q-td :props="props">
+                                    <div class="row items-center justify-end no-wrap gap-1">
+                                        <q-btn flat round dense icon="edit" color="primary" size="sm"
+                                               @click="$parent.$emit('sess_edit', props.row.id)">
+                                            <q-tooltip>Bearbeiten</q-tooltip>
+                                        </q-btn>
+                                        <q-btn v-if="!props.row.is_paid" flat round dense icon="check_circle"
+                                               color="positive" size="sm"
+                                               @click="$parent.$emit('sess_mark_paid', props.row.id)">
+                                            <q-tooltip>Als bezahlt markieren</q-tooltip>
+                                        </q-btn>
+                                        <q-btn flat round dense icon="delete" color="negative" size="sm"
+                                               @click="$parent.$emit('sess_delete', props.row.id)">
+                                            <q-tooltip>Löschen</q-tooltip>
+                                        </q-btn>
+                                    </div>
+                                </q-td>
+                                """,
+                            )
 
-                            with ui.expansion(header_text, icon="event").classes(
-                                "w-full max-w-4xl shadow-sm border border-slate-200 mb-0 mt-0 bg-white rounded"
-                            ):
-                                with ui.column().classes("w-full p-4 gap-4"):
-                                    if s.issue:
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("Anliegen").classes(
-                                                "font-bold text-slate-700 text-sm"
-                                            )
-                                            ui.label(s.issue).classes(
-                                                "text-slate-600 whitespace-pre-line"
-                                            )
-                                    if s.approach:
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("Lösungsansatz").classes(
-                                                "font-bold text-slate-700 text-sm"
-                                            )
-                                            ui.label(s.approach).classes(
-                                                "text-slate-600 whitespace-pre-line"
-                                            )
-                                    if s.protocol:
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("Protokoll").classes(
-                                                "font-bold text-slate-700 text-sm"
-                                            )
-                                            ui.label(s.protocol).classes(
-                                                "text-slate-600 whitespace-pre-line"
-                                            )
+                            def on_sess_edit(msg):
+                                sess_id = msg.args
+                                with get_session() as db:
+                                    s = (
+                                        db.query(PatientSession)
+                                        .filter_by(id=sess_id)
+                                        .first()
+                                    )
+                                    if s:
+                                        db.expunge(s)
+                                if s:
+                                    open_session(s)
 
-                                    ui.separator()
-                                    with ui.row().classes(
-                                        "w-full justify-between items-center"
-                                    ):
-                                        pm_title = (
-                                            s.payment_method.title
-                                            if s.payment_method
-                                            else "Nicht definiert"
-                                        )
-                                        vat_desc = (
-                                            f"{s.vat_setting.rate}% MwSt"
-                                            if s.vat_setting
-                                            else "Keine MwSt"
-                                        )
-                                        booking_info = (
-                                            f" | {s.booking_text}"
-                                            if s.booking_text
-                                            else ""
-                                        )
-                                        ui.label(
-                                            f"Abrechnung: {pm_title} | {vat_desc}{booking_info}"
-                                        ).classes("text-xs text-slate-500 font-medium")
+                            def on_sess_mark_paid(msg):
+                                sess_id = msg.args
+                                with get_session() as db:
+                                    s = (
+                                        db.query(PatientSession)
+                                        .filter_by(id=sess_id)
+                                        .first()
+                                    )
+                                    if s:
+                                        s.is_paid = True
+                                        db.commit()
+                                ui.notify(
+                                    "Sitzung als bezahlt markiert.", type="positive"
+                                )
+                                main_content.refresh()
 
-                                        with ui.row().classes("gap-2"):
-                                            ui.button(
-                                                "Löschen",
-                                                on_click=lambda idx=s.id: soft_delete(
-                                                    PatientSession, idx
-                                                ),
-                                            ).props('flat color="negative" size="sm"')
-                                            ui.button(
-                                                "Bearbeiten",
-                                                on_click=lambda item=s: open_session(
-                                                    item
-                                                ),
-                                            ).props('outline color="primary" size="sm"')
+                            def on_sess_delete(msg):
+                                soft_delete(PatientSession, msg.args)
+
+                            sess_table.on("sess_edit", on_sess_edit)
+                            sess_table.on("sess_mark_paid", on_sess_mark_paid)
+                            sess_table.on("sess_delete", on_sess_delete)
 
                     elif state["active_tab"] == "Abrechnungen":
 
@@ -1526,6 +1736,13 @@ def patient_detail_page(navigate) -> None:
                                             s.is_paid = True
 
                                             session.commit()
+                                            try:
+                                                book_patient_session(session, s.id)
+                                                session.commit()
+                                            except Exception as e:
+                                                app_logger.error(
+                                                    f"Buchungsfehler im Dialog: {e}"
+                                                )
 
                                     ui.notify(
                                         "Sitzung als bezahlt markiert.", type="positive"
