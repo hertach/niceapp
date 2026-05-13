@@ -931,7 +931,7 @@ def patient_detail_page(navigate) -> None:
                                 inv_num      = s.invoice_number or ""
                                 inv_ver      = s.invoice_version or 0
                                 # Rechnungsnummer-Anzeige: RE-2026-001  oder  RE-2026-001.2 (bei Wiederöffnung)
-                                inv_display  = f"{inv_num}.{inv_ver}" if inv_ver > 0 else inv_num
+                                inv_display = s.invoice_number or "—"
                                 status       = _session_status(s)
                                 all_rows.append({
                                     "id":             s.id,
@@ -1062,7 +1062,7 @@ def patient_detail_page(navigate) -> None:
                                 </q-td>
                             """)
 
-                            # ── Rechnungsnummer: Monospace-Font, leer = "—" ──
+                            # ── Rechnungsnummer: leer = "—" ──
                             tbl.add_slot("body-cell-invoice_number", r"""
                                 <q-td :props="props">
                                     {{ props.row.invoice_number || '-' }}
@@ -1122,7 +1122,6 @@ def patient_detail_page(navigate) -> None:
                                                 s = db.query(PatientSession).filter_by(id=sid).first()
                                                 if s and not s.is_invoiced:
                                                     s.invoice_number = generate_invoice_number(db, s.date.year)
-                                                    print(s.invoice_number)
                                                     s.invoice_version = 0
                                                     s.is_invoiced = True
                                                     db.flush()   # ← BUGFIX: Nummer für nächste Iteration sichtbar
