@@ -793,9 +793,7 @@ def patient_detail_page(navigate) -> None:
 
     # ── SEITENHEADER ─────────────────────────────────────────────────────────
     with ui.row().classes("items-center w-full mb-6 gap-4"):
-        ui.button(icon="arrow_back", on_click=lambda: navigate("/patients")).props(
-            "flat round"
-        ).classes("text-gray-600 hover:bg-gray-100")
+        ui.button(icon='arrow_back', on_click=lambda: navigate('/patients')).props('flat round dense')
         ui.label("Patientenakte" if patient_id else "Neuer Patient").classes(
             "text-[24px] font-semibold text-[#1e3a5f]"
         )
