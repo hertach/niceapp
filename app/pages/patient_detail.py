@@ -1007,13 +1007,11 @@ def patient_detail_page(navigate) -> None:
                                 "text-slate-400 italic py-4"
                             )
                         else:
-                            # ── Tabellenspalten ───────────────────────────
                             columns = [
                                 {"name": "date",           "label": "Datum",        "field": "date",           "align": "left",  "sortable": True},
                                 {"name": "booking_text",   "label": "Buchungstext", "field": "booking_text",   "align": "left"},
                                 {"name": "amount_str",     "label": "Betrag",       "field": "amount_str",     "align": "right"},
                                 {"name": "vat",            "label": "MwSt",         "field": "vat",            "align": "right"},
-                                # ── NEU: Rechnungsnummer-Spalte ──
                                 {"name": "invoice_number", "label": "Rechnungs-Nr.", "field": "invoice_number", "align": "left"},
                                 {"name": "status",         "label": "Status",        "field": "status",         "align": "center"},
                                 {"name": "payment_method", "label": "Zahlungsart",   "field": "payment_method", "align": "left"},
@@ -1067,11 +1065,7 @@ def patient_detail_page(navigate) -> None:
                             # ── Rechnungsnummer: Monospace-Font, leer = "—" ──
                             tbl.add_slot("body-cell-invoice_number", r"""
                                 <q-td :props="props">
-                                    <span v-if="props.row.invoice_number"
-                                          class="font-mono text-xs text-slate-700">
-                                        {{ props.row.invoice_number }}
-                                    </span>
-                                    <span v-else class="text-slate-300 text-xs">—</span>
+                                    {{ props.row.invoice_number || '-' }}
                                 </q-td>
                             """)
 
@@ -1199,27 +1193,29 @@ def patient_detail_page(navigate) -> None:
                                 main_content.refresh()
 
                             def on_invoice(msg):
-                                """
-                                Einzelne Sitzung direkt verrechnen (ohne Druckdialog).
-                                BUGFIX: flush() vor commit() damit die Nummer sofort in der
-                                Session sichtbar ist, bevor book_patient_session() läuft.
-                                """
-                                sid = msg.args
-                                with get_session() as db:
-                                    s = db.query(PatientSession).filter_by(id=sid).first()
-                                    if s and not s.is_invoiced:
-                                        s.invoice_number  = generate_invoice_number(db, s.date.year)
-                                        print(s.invoice_number)
-                                        s.invoice_version = 0
-                                        s.is_invoiced     = True
-                                        db.flush()   # ← BUGFIX
+                                row = msg.args
+                                session_id = row["id"]
+
+                                # 1. Datenbank-Update durchführen
+                                try:
+                                    with get_session() as db:
+                                        # Diese Funktion muss die Nummer vergeben und den Status setzen
+                                        book_patient_session(db, session_id)
                                         db.commit()
-                                        try:
-                                            book_patient_session(db, s.id)
-                                        except Exception as ex:
-                                            app_logger.error(f"Buchungsfehler: {ex}")
-                                ui.notify("Sitzung verrechnet.", type="positive")
+                                    ui.notify("Rechnung verbucht und Nummer generiert", type="positive")
+                                except Exception as e:
+                                    app_logger.error(f"Fehler beim Verrechnen: {e}")
+                                    ui.notify(f"Fehler: {e}", type="negative")
+                                    return
+
+                                # 2. UI aktualisieren, damit die neue Nummer und der Status sichtbar werden
                                 main_content.refresh()
+
+                                # 3. Erst jetzt den Dialog zum Drucken/Vorschau öffnen
+                                open_document_dialog(
+                                    doc_type="Rechnung", patient_id=patient_id,
+                                    session_ids=[session_id],
+                                )
 
                             def on_paid(msg):
                                 sid = msg.args

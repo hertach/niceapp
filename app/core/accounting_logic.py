@@ -81,7 +81,10 @@ def book_patient_session(db: Session, session_id: int):
         )
 
     buchungstext = p_session.booking_text or f"Sitzung {p_session.patient.full_name}"
-
+    if not p_session.invoice_number:
+        # Hier nutzt du deine vorhandene generate_invoice_number Funktion
+        p_session.invoice_number = generate_invoice_number(db, p_session.date.year)
+    p_session.is_invoiced = True
     # --- SCHRITT A: IMMER DIE RECHNUNG BUCHEN (1100 an 3000) ---
     # Wir hängen ein "-RE" (für Rechnung) an die Reference, um sie von der Zahlung zu unterscheiden
     entry_rechnung = (
