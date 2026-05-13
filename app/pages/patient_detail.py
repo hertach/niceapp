@@ -1086,13 +1086,6 @@ def patient_detail_page(navigate) -> None:
                                                @click="$parent.$emit('t_reopen', props.row.id)">
                                             <q-tooltip>Wiederöffnen (neue Rechnungsnr.)</q-tooltip>
                                         </q-btn>
-                                        <!-- Verrechnen: nur wenn noch nicht verrechnet -->
-                                        <q-btn v-if="!props.row.is_invoiced"
-                                               flat round dense icon="receipt_long" size="sm"
-                                               class="text-violet-600"
-                                               @click="$parent.$emit('t_invoice', props.row.id)">
-                                            <q-tooltip>Verrechnen</q-tooltip>
-                                        </q-btn>
                                         <!-- Bezahlt: nur wenn noch nicht bezahlt -->
                                         <q-btn v-if="!props.row.is_paid"
                                                flat round dense icon="price_check" size="sm"
