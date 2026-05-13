@@ -842,7 +842,8 @@ def patient_detail_page(navigate) -> None:
                     # PERSONALIEN
                     # ════════════════════════════════════════════════════════
                     if state["active_tab"] == "Personalien":
-                        with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
+                        ui.label("Personalien").classes("text-[20px] font-medium text-[#1e3a5f]")
+                        with ui.card().classes("w-full p-6 shadow-sm mb-6"):
                             ui.label("Stammdaten").classes("text-[18px] font-medium mb-4 text-[#1e3a5f]")
                             with ui.row().classes("w-full gap-4 mb-4"):
                                 ui.input("Vorname").bind_value(state, "first_name").classes("flex-1").props("outlined dense")
@@ -853,7 +854,7 @@ def patient_detail_page(navigate) -> None:
                             ui.textarea("Bemerkungen").bind_value(state, "notes").classes("w-full").props('outlined rows="4"')
 
                         if patient_id:
-                            with ui.card().classes("w-full max-w-3xl p-6 shadow-sm border-l-4 border-[#0078d4]"):
+                            with ui.card().classes("w-full p-6 shadow-sm border-l-4 border-[#0078d4]"):
                                 with ui.row().classes("w-full items-center justify-between mb-4"):
                                     ui.label("Krankenversicherung").classes("text-[18px] font-medium text-[#1e3a5f]")
                                     ui.button("Neu", icon="add", on_click=lambda: open_ins()).props("outline dense").classes("text-[#0078d4]")
@@ -883,8 +884,9 @@ def patient_detail_page(navigate) -> None:
                     # KONTAKTANGABEN
                     # ════════════════════════════════════════════════════════
                     elif state["active_tab"] == "Kontaktangaben":
+                        ui.label("Kontaktangaben").classes("text-[20px] font-medium text-[#1e3a5f]")
                         def draw_list(title, items, open_fn, model_cls, fmt_main, fmt_sub):
-                            with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
+                            with ui.card().classes("w-full p-6 shadow-sm mb-6"):
                                 with ui.row().classes("w-full items-center justify-between mb-4"):
                                     ui.label(title).classes("text-[18px] font-medium text-[#1e3a5f]")
                                     ui.button("Neu", icon="add", on_click=lambda: open_fn()).props("outline dense").classes("text-[#0078d4]")
@@ -906,10 +908,10 @@ def patient_detail_page(navigate) -> None:
                         draw_list("Postadressen",    state["addresses"], open_addr,  PatientAddress, lambda i: i["street"],  lambda i: f"{i['zip_code']} {i['city']}")
 
                     # ════════════════════════════════════════════════════════
-                    # SITZUNGEN & ABRECHNUNG  (ehemals 2 separate Tabs)
+                    # SITZUNGEN
                     # ════════════════════════════════════════════════════════
                     elif state["active_tab"] == "Sitzungen":
-
+                        ui.label("Sitzungen").classes("text-[20px] font-medium text-[#1e3a5f]")
                         # ── Datenbankabfrage ──────────────────────────────
                         with get_session() as db:
                             sitzungen = (
@@ -958,7 +960,7 @@ def patient_detail_page(navigate) -> None:
                         # ── Kopf ──────────────────────────────────────────
                         with ui.row().classes("w-full justify-between items-start mb-4 gap-4 flex-wrap"):
                             with ui.column().classes("gap-2"):
-                                ui.label("Sitzungen").classes("text-[20px] font-medium text-[#1e3a5f]")
+
                                 # Statistik-Chips
                                 with ui.row().classes("gap-2 flex-wrap"):
                                     for label, chip_cls in [
@@ -1244,6 +1246,7 @@ def patient_detail_page(navigate) -> None:
                     # DATEIEN
                     # ════════════════════════════════════════════════════════
                     elif state["active_tab"] == "Dateien":
+                        ui.label("Dateien").classes("text-[20px] font-medium text-[#1e3a5f]")
                         ui.label("Dateien kommen hier hin…").classes("text-lg text-slate-500")
 
             main_content()
