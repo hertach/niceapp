@@ -6,6 +6,33 @@ from app.models.accounting import Account, FiscalYear, JournalEntry, JournalEntr
 from app.models.patient import PatientSession
 
 
+def generate_invoice_number(db: Session, year: int) -> str:
+    """
+    Generiert die nächste Rechnungsnummer für ein gegebenes Jahr.
+    Format: RE-{YEAR}-{NNN}  (z.B. RE-2026-001)
+    Versionierte Wiederöffnungen erhalten den Suffix .1, .2 usw. (wird vom Aufrufer gesetzt).
+    """
+    prefix = f"RE-{year}-"
+
+    existing = (
+        db.query(PatientSession.invoice_number)
+        .filter(PatientSession.invoice_number.like(f"{prefix}%"))
+        .all()
+    )
+
+    max_num = 0
+    for (inv_num,) in existing:
+        if inv_num:
+            base = inv_num.split(".")[0]  # ".x"-Suffix ignorieren
+            try:
+                num = int(base.replace(prefix, ""))
+                max_num = max(max_num, num)
+            except ValueError:
+                pass
+
+    return f"{prefix}{max_num + 1:03d}"
+
+
 def book_patient_session(db: Session, session_id: int):
     """Bucht eine Sitzung in die Buchhaltung (Rechnung und ggf. Zahlung)."""
     p_session = db.query(PatientSession).filter_by(id=session_id).first()
@@ -22,7 +49,7 @@ def book_patient_session(db: Session, session_id: int):
     account_ertrag = db.query(Account).filter_by(account_number=3000).first()
     account_debitoren = db.query(Account).filter_by(account_number=1100).first()
 
-    # HINWEIS: Für den Moment buchen wir alles Bezahle auf 1020 (Bank).
+    # HINWEIS: Für den Moment buchen wir alles Bezahlte auf 1020 (Bank).
     # Sobald wir die Zahlarten (Twint, Sumup, Bar) verwalten, können wir hier
     # pro Zahlart ein eigenes Konto (z.B. 1000 für Kasse) ansteuern!
     if p_session.payment_method and p_session.payment_method.account_id:
