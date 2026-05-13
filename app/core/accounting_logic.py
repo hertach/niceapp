@@ -4,16 +4,29 @@ from sqlalchemy.orm import Session
 from app.core.logger import app_logger
 from app.models.accounting import Account, FiscalYear, JournalEntry, JournalEntryLine
 from app.models.patient import PatientSession
+from app.models.finance_setting import InvoiceFormatSetting
 
 
 def generate_invoice_number(db: Session, year: int) -> str:
     """
-    Generiert die nächste Rechnungsnummer für ein gegebenes Jahr.
-    Format: RE-{YEAR}-{NNN}  (z.B. RE-2026-001)
+    Generiert die nächste Rechnungsnummer basierend auf den Einstellungen.
     Versionierte Wiederöffnungen erhalten den Suffix .1, .2 usw. (wird vom Aufrufer gesetzt).
     """
-    prefix = f"RE-{year}-"
+    # 1. Format-Einstellungen aus DB holen (oder Fallback definieren)
+    fmt = db.query(InvoiceFormatSetting).first()
 
+    # Standardwerte, falls die DB (noch) leer sein sollte
+    prefix_base = fmt.prefix if fmt else "RE-"
+    include_year = fmt.include_year if fmt else True
+    padding = fmt.padding if fmt and fmt.padding else 3
+
+    # 2. Präfix für die Suche zusammenbauen
+    if include_year:
+        prefix = f"{prefix_base}{year}-"
+    else:
+        prefix = prefix_base
+
+    # 3. Alle existierenden Rechnungen mit diesem Präfix abfragen
     existing = (
         db.query(PatientSession.invoice_number)
         .filter(PatientSession.invoice_number.like(f"{prefix}%"))
@@ -30,7 +43,8 @@ def generate_invoice_number(db: Session, year: int) -> str:
             except ValueError:
                 pass
 
-    return f"{prefix}{max_num + 1:03d}"
+    # 4. Neue Nummer mit konfiguriertem Padding generieren (z.B. :03d)
+    return f"{prefix}{max_num + 1:0{padding}d}"
 
 
 def book_patient_session(db: Session, session_id: int):

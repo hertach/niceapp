@@ -7,10 +7,50 @@ from app.components.inputs import date_input
 from app.core.database import get_session
 from app.core.logger import app_logger
 from app.models.accounting import Account
-from app.models.finance_setting import PaymentMethod, VATSetting
+from app.models.finance_setting import PaymentMethod, VATSetting, InvoiceFormatSetting
 
 
 def finance_settings_page() -> None:
+    # ── INVOICE FORMAT: Hilfsfunktionen ─────────────────────────────
+    def get_or_create_invoice_format():
+        with get_session() as session:
+            fmt = session.query(InvoiceFormatSetting).first()
+            if not fmt:
+                fmt = InvoiceFormatSetting(prefix="RE-", include_year=True, padding=3)
+                session.add(fmt)
+                session.commit()
+                session.refresh(fmt)
+            return fmt
+
+    async def save_invoice_format():
+        try:
+            with get_session() as session:
+                fmt = session.query(InvoiceFormatSetting).first()
+                if not fmt:
+                    fmt = InvoiceFormatSetting()
+                    session.add(fmt)
+
+                fmt.prefix = prefix_input.value
+                fmt.include_year = year_toggle.value
+                fmt.padding = int(padding_input.value)
+                session.commit()
+            ui.notify("Rechnungsformat erfolgreich gespeichert", type="positive")
+        except Exception as e:
+            ui.notify(f"Fehler beim Speichern: {e}", type="negative")
+
+    def update_preview():
+        """Generiert eine Live-Vorschau der Rechnungsnummer."""
+        current_year = date.today().year
+        pref = prefix_input.value or ""
+
+        # Logik exakt wie in accounting_logic.py
+        if year_toggle.value:
+            demo_prefix = f"{pref}{current_year}-"
+        else:
+            demo_prefix = pref
+
+        demo_num = f"{1:0{int(padding_input.value or 3)}d}"
+        preview_label.set_text(f"Vorschau: {demo_prefix}{demo_num}")
     # ── VAT: Hilfsfunktionen ───────────────────────────────────────
     def get_vat_data() -> list[dict]:
         today = date.today()
@@ -245,6 +285,30 @@ def finance_settings_page() -> None:
         "text-[24px] font-semibold text-[#1e3a5f] mb-4"
     )
     with ui.card().classes("w-full max-w-4xl p-8 shadow-sm border border-slate-200"):
+        # ── INVOICE FORMAT: UI ───────────────────────────────────
+        with ui.column().classes("w-full gap-4"):
+            ui.label("Rechnungsformat").classes("font-medium text-slate-700 text-lg")
+
+            # Lade aktuelle Settings
+            current_fmt = get_or_create_invoice_format()
+
+            with ui.row().classes("w-full items-center gap-6"):
+                # on_change triggert die Live-Vorschau bei jedem Tastendruck/Klick
+                prefix_input = ui.input("Präfix", value=current_fmt.prefix, on_change=update_preview).props(
+                    "outlined dense")
+                padding_input = ui.number("Stellenanzahl", value=current_fmt.padding, min=1, max=10, format="%d",
+                                          on_change=update_preview).props("outlined dense")
+                year_toggle = ui.checkbox("Jahr integrieren (z.B. -2026-)", value=current_fmt.include_year,
+                                          on_change=update_preview)
+
+            with ui.row().classes("w-full items-center justify-between mt-2"):
+                preview_label = ui.label("Vorschau: ").classes(
+                    "text-md font-mono text-slate-500 bg-slate-100 p-2 rounded")
+                ui.button("Format speichern", icon="save", on_click=save_invoice_format).props(
+                    "unelevated color=primary size=sm")
+
+            update_preview()  # Initiales Rendern der Vorschau
+            ui.separator().props("dense").classes("my-4")
         # ── VAT: UI / TABLE ──────────────────────────────────────────
         with ui.column().classes("w-full gap-6"):
             with ui.row().classes("w-full justify-between items-center"):

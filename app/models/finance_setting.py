@@ -25,3 +25,10 @@ class PaymentMethod(Base):
 
     account = relationship("Account", back_populates="payment_method")
     sessions = relationship("PatientSession", back_populates="payment_method")
+
+class InvoiceFormatSetting(Base):
+    __tablename__ = "invoice_format_settings"
+    id = Column(Integer, primary_key=True)
+    prefix = Column(String, default="RE-", nullable=False) # z.B. "RE-" oder "INV-"
+    include_year = Column(Boolean, default=True)           # Soll das Jahr rein? (z.B. 2026)
+    padding = Column(Integer, default=3)
