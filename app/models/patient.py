@@ -1,5 +1,6 @@
 # app/models/patient.py
-from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String, Text
+import enum
+from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String, Text, Enum
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -91,6 +92,13 @@ class PatientInsurance(Base):
 
     patient = relationship("Patient", back_populates="insurances")
 
+# 1. Definieren des Status-Enums
+class SessionStatus(str, enum.Enum):
+    OPEN = "Offen"
+    COMPLETED = "Abgeschlossen"
+    INVOICED = "Verrechnet"
+    PAID = "Bezahlt"
+    CANCELLED = "Storniert"
 
 class PatientSession(Base):
     __tablename__ = "patient_sessions"
@@ -111,15 +119,16 @@ class PatientSession(Base):
     booking_text = Column(String(255), nullable=True)
     payment_method_id = Column(Integer, ForeignKey("payment_methods.id"), nullable=True)
     vat_id = Column(Integer, ForeignKey("vat_settings.id"), nullable=True)
-    is_paid = Column(Boolean, default=False)
     amount = Column(Float, default=0.0)
 
-    is_invoiced = Column(Boolean, default=False)
     invoice_number = Column(String(50), nullable=True)
     invoice_version = Column(Integer, default=0)
-
-    is_closed = Column(Boolean, default=False)
+    cancellation_reason = Column(String(255), nullable=True)
     is_deleted = Column(Boolean, default=False)  # Für Soft-Delete
+
+    status = Column(Enum(SessionStatus), default=SessionStatus.OPEN, server_default="Offen", nullable=False)
+    parent_id = Column(Integer, ForeignKey("patient_sessions.id"), nullable=True)
+    original_session = relationship("PatientSession", remote_side=[id], backref="clones")
 
     patient = relationship("Patient", back_populates="sessions")
     payment_method = relationship("PaymentMethod", back_populates="sessions")

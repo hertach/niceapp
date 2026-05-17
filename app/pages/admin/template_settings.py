@@ -73,7 +73,7 @@ def template_settings_page() -> None:
             "w-full mb-2"
         ).props("outlined dense")
         ui.select(
-            ["Rechnung", "Quittung", "Begleitbrief", "Mahnung"], label="Zuweisungstyp"
+            ["Rechnung", "Quittung","Stornorechnung", "Begleitbrief", "Mahnung"], label="Zuweisungstyp"
         ).bind_value(edit_state, "doc_type").classes("w-full mb-2").props(
             "outlined dense"
         )
@@ -306,7 +306,7 @@ def template_settings_page() -> None:
                 with ui.row().classes("items-center w-full gap-4"):
                     selected_type = (
                         ui.select(
-                            ["Rechnung", "Quittung", "Begleitbrief", "Mahnung"],
+                            ["Rechnung", "Quittung","Stornorechnung", "Begleitbrief", "Mahnung"],
                             label="Zuweisung",
                         )
                         .classes("w-40")

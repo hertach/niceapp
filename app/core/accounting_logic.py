@@ -1,32 +1,33 @@
 # app/core/accounting_logic.py
+from datetime import date
+
 from sqlalchemy.orm import Session
 
 from app.core.logger import app_logger
 from app.models.accounting import Account, FiscalYear, JournalEntry, JournalEntryLine
-from app.models.patient import PatientSession
 from app.models.finance_setting import InvoiceFormatSetting
+from app.models.patient import PatientSession, SessionStatus
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HILFSFUNKTIONEN
+# ══════════════════════════════════════════════════════════════════════════════
 
 def generate_invoice_number(db: Session, year: int) -> str:
     """
-    Generiert die nächste Rechnungsnummer basierend auf den Einstellungen.
-    Versionierte Wiederöffnungen erhalten den Suffix .1, .2 usw. (wird vom Aufrufer gesetzt).
+    Generiert die nächste Rechnungsnummer basierend auf den Format-Einstellungen.
+    Format-Standard: RE-{YEAR}-{NNN}  → z.B. RE-2026-001
+    Versionierte Wiederöffnungen (.1, .2 …) werden vom Aufrufer gesetzt.
+    BUGFIX: db.flush() nach der Zuweisung im Aufrufer sicherstellt, dass
+    bei Batch-Operationen jede Nummer eindeutig bleibt.
     """
-    # 1. Format-Einstellungen aus DB holen (oder Fallback definieren)
-    fmt = db.query(InvoiceFormatSetting).first()
+    fmt          = db.query(InvoiceFormatSetting).first()
+    prefix_base  = (fmt.prefix       if fmt else "RE-")
+    include_year = (fmt.include_year if fmt else True)
+    padding      = (fmt.padding      if fmt and fmt.padding else 3)
 
-    # Standardwerte, falls die DB (noch) leer sein sollte
-    prefix_base = fmt.prefix if fmt else "RE-"
-    include_year = fmt.include_year if fmt else True
-    padding = fmt.padding if fmt and fmt.padding else 3
+    prefix = f"{prefix_base}{year}-" if include_year else prefix_base
 
-    # 2. Präfix für die Suche zusammenbauen
-    if include_year:
-        prefix = f"{prefix_base}{year}-"
-    else:
-        prefix = prefix_base
-
-    # 3. Alle existierenden Rechnungen mit diesem Präfix abfragen
     existing = (
         db.query(PatientSession.invoice_number)
         .filter(PatientSession.invoice_number.like(f"{prefix}%"))
@@ -36,143 +37,217 @@ def generate_invoice_number(db: Session, year: int) -> str:
     max_num = 0
     for (inv_num,) in existing:
         if inv_num:
-            base = inv_num.split(".")[0]  # ".x"-Suffix ignorieren
+            base = inv_num.split(".")[0]   # ".x"-Versionssuffix ignorieren
             try:
-                num = int(base.replace(prefix, ""))
-                max_num = max(max_num, num)
+                max_num = max(max_num, int(base.replace(prefix, "")))
             except ValueError:
                 pass
 
-    # 4. Neue Nummer mit konfiguriertem Padding generieren (z.B. :03d)
     return f"{prefix}{max_num + 1:0{padding}d}"
 
 
-def book_patient_session(db: Session, session_id: int):
-    """Bucht eine Sitzung in die Buchhaltung (Rechnung und ggf. Zahlung)."""
-    p_session = db.query(PatientSession).filter_by(id=session_id).first()
-    if not p_session or p_session.amount <= 0:
+def _load_standard_accounts(db: Session, payment_method=None):
+    """Lädt die benötigten Standardkonten aus der Datenbank."""
+    account_ertrag    = db.query(Account).filter_by(account_number=3000).first()
+    account_debitoren = db.query(Account).filter_by(account_number=1100).first()
+
+    if payment_method and payment_method.account_id:
+        account_zahlung = payment_method.account
+    else:
+        account_zahlung = db.query(Account).filter_by(account_number=1020).first()
+        if payment_method:
+            app_logger.warning(
+                f"Kein Konto für Zahlart «{payment_method.title}» definiert. Fallback 1020."
+            )
+
+    if not all([account_ertrag, account_debitoren, account_zahlung]):
+        raise ValueError("Standardkonten (3000, 1100 oder 1020) fehlen im Kontenplan.")
+
+    return account_ertrag, account_debitoren, account_zahlung
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HAUPTFUNKTIONEN
+# ══════════════════════════════════════════════════════════════════════════════
+
+def book_patient_session(db: Session, session_id: int) -> None:
+    """
+    Erstellt / aktualisiert Buchungssätze für eine Sitzung.
+
+    Logik nach Status:
+      OPEN / COMPLETED   → keine Buchung (Sitzung noch nicht abgerechnet)
+      INVOICED           → Buchung: 1100 Debitoren AN 3000 Honorarertrag
+      PAID               → obige Buchung  PLUS  Bank/Kassa AN 1100 Debitoren
+      CANCELLED          → wird von cancel_patient_session() behandelt
+    """
+    p = db.query(PatientSession).filter_by(id=session_id).first()
+    if not p or p.amount <= 0:
         return
 
-    # 1. Geschäftsjahr prüfen
-    year_name = str(p_session.date.year)
+    if p.status not in (SessionStatus.INVOICED, SessionStatus.PAID):
+        return   # Keine Buchung nötig für offene / abgeschlossene Sitzungen
+
+    # Geschäftsjahr prüfen
+    year_name   = str(p.date.year)
     fiscal_year = db.query(FiscalYear).filter_by(name=year_name).first()
     if not fiscal_year or fiscal_year.is_closed:
         raise ValueError(f"Geschäftsjahr {year_name} fehlt oder ist abgeschlossen.")
 
-    # 2. Konten laden (Ertrag, Debitoren und das Zahlungskonto)
-    account_ertrag = db.query(Account).filter_by(account_number=3000).first()
-    account_debitoren = db.query(Account).filter_by(account_number=1100).first()
-
-    # HINWEIS: Für den Moment buchen wir alles Bezahlte auf 1020 (Bank).
-    # Sobald wir die Zahlarten (Twint, Sumup, Bar) verwalten, können wir hier
-    # pro Zahlart ein eigenes Konto (z.B. 1000 für Kasse) ansteuern!
-    if p_session.payment_method and p_session.payment_method.account_id:
-        account_zahlung = p_session.payment_method.account
-    else:
-        # Fallback: Wenn kein Konto bei der Zahlart hinterlegt ist, buchen wir auf 1020 Bank
-        account_zahlung = db.query(Account).filter_by(account_number=1020).first()
-        app_logger.warning(
-            f"Kein Konto für Zahlart {p_session.payment_method.title} definiert. Nutze Fallback 1020."
-        )
-
-    if not all([account_ertrag, account_debitoren, account_zahlung]):
-        raise ValueError(
-            "Es fehlen Standardkonten (3000, 1100 oder 1020) im Kontenplan."
-        )
-
-    buchungstext = p_session.booking_text or f"Sitzung {p_session.patient.full_name}"
-    if not p_session.invoice_number:
-        # Hier nutzt du deine vorhandene generate_invoice_number Funktion
-        p_session.invoice_number = generate_invoice_number(db, p_session.date.year)
-    p_session.is_invoiced = True
-    # --- SCHRITT A: IMMER DIE RECHNUNG BUCHEN (1100 an 3000) ---
-    # Wir hängen ein "-RE" (für Rechnung) an die Reference, um sie von der Zahlung zu unterscheiden
-    entry_rechnung = (
-        db.query(JournalEntry)
-        .filter_by(patient_session_id=session_id, reference=f"SITZUNG-{session_id}-RE")
-        .first()
+    account_ertrag, account_debitoren, account_zahlung = _load_standard_accounts(
+        db, p.payment_method
     )
 
-    if entry_rechnung:
-        entry_rechnung.description = buchungstext[:255]
-        entry_rechnung.date = p_session.date
-        for line in entry_rechnung.lines:
+    buchungstext = p.booking_text or f"Sitzung {p.patient.full_name}"
+
+    # ── SCHRITT A: RECHNUNG  (1100 Debitoren AN 3000 Ertrag) ──────────────
+    ref_re = f"SITZUNG-{session_id}-RE"
+    entry_re = db.query(JournalEntry).filter_by(
+        patient_session_id=session_id, reference=ref_re
+    ).first()
+
+    if entry_re:
+        entry_re.description = buchungstext[:255]
+        entry_re.date        = p.date
+        for line in entry_re.lines:
             db.delete(line)
     else:
-        entry_rechnung = JournalEntry(
+        entry_re = JournalEntry(
             patient_session_id=session_id,
             fiscal_year_id=fiscal_year.id,
-            date=p_session.date,
+            date=p.date,
             description=buchungstext[:255],
-            reference=f"SITZUNG-{session_id}-RE",
+            reference=ref_re,
         )
-        db.add(entry_rechnung)
+        db.add(entry_re)
 
-    db.flush()  # ID für die Zeilen generieren
+    db.flush()
+    db.add(JournalEntryLine(journal_entry_id=entry_re.id, account_id=account_debitoren.id, debit=p.amount))
+    db.add(JournalEntryLine(journal_entry_id=entry_re.id, account_id=account_ertrag.id,    credit=p.amount))
 
-    db.add(
-        JournalEntryLine(
-            journal_entry_id=entry_rechnung.id,
-            account_id=account_debitoren.id,
-            debit=p_session.amount,
-        )
-    )
-    db.add(
-        JournalEntryLine(
-            journal_entry_id=entry_rechnung.id,
-            account_id=account_ertrag.id,
-            credit=p_session.amount,
-        )
-    )
+    # ── SCHRITT B: ZAHLUNG  (Bank/Kassa AN 1100 Debitoren) — nur wenn PAID ──
+    ref_za   = f"SITZUNG-{session_id}-ZA"
+    entry_za = db.query(JournalEntry).filter_by(
+        patient_session_id=session_id, reference=ref_za
+    ).first()
 
-    # --- SCHRITT B: DIE ZAHLUNG BUCHEN (1020 an 1100) - NUR WENN BEZAHLT ---
-    # Wir hängen ein "-ZA" (für Zahlung) an
-    entry_zahlung = (
-        db.query(JournalEntry)
-        .filter_by(patient_session_id=session_id, reference=f"SITZUNG-{session_id}-ZA")
-        .first()
-    )
-
-    if p_session.is_paid:
+    if p.status == SessionStatus.PAID:
         zahlungs_text = f"Zahlung: {buchungstext}"
-        if entry_zahlung:
-            entry_zahlung.description = zahlungs_text[:255]
-            entry_zahlung.date = (
-                p_session.date
-            )  # Zahlung erfolgt vorerst am gleichen Tag wie Sitzung
-            for line in entry_zahlung.lines:
+        if entry_za:
+            entry_za.description = zahlungs_text[:255]
+            entry_za.date        = p.date
+            for line in entry_za.lines:
                 db.delete(line)
         else:
-            entry_zahlung = JournalEntry(
+            entry_za = JournalEntry(
                 patient_session_id=session_id,
                 fiscal_year_id=fiscal_year.id,
-                date=p_session.date,
+                date=p.date,
                 description=zahlungs_text[:255],
-                reference=f"SITZUNG-{session_id}-ZA",
+                reference=ref_za,
             )
-            db.add(entry_zahlung)
+            db.add(entry_za)
 
         db.flush()
-
-        # Die Zahlung gleicht den Debitoren (1100) im Haben aus
-        db.add(
-            JournalEntryLine(
-                journal_entry_id=entry_zahlung.id,
-                account_id=account_zahlung.id,
-                debit=p_session.amount,
-            )
-        )
-        db.add(
-            JournalEntryLine(
-                journal_entry_id=entry_zahlung.id,
-                account_id=account_debitoren.id,
-                credit=p_session.amount,
-            )
-        )
+        db.add(JournalEntryLine(journal_entry_id=entry_za.id, account_id=account_zahlung.id,  debit=p.amount))
+        db.add(JournalEntryLine(journal_entry_id=entry_za.id, account_id=account_debitoren.id, credit=p.amount))
     else:
-        # Falls du den "Bereits bezahlt"-Haken bei einer Bearbeitung entfernst,
-        # löschen wir die zugehörige Zahlungsbuchung automatisch!
-        if entry_zahlung:
-            db.delete(entry_zahlung)
+        # Status wechselte zurück zu INVOICED → Zahlungsbuchung entfernen
+        if entry_za:
+            db.delete(entry_za)
 
     db.commit()
+
+
+def cancel_patient_session(db: Session, session_id: int, reason: str) -> PatientSession:
+    """
+    Vollständige Stornierung einer Sitzung in drei Schritten:
+
+    1. Gegenbuchungen (Stornorechnung): Alle JournalEntries der Original-Sitzung
+       werden mit vertauschten Soll/Haben-Werten neu eingebucht.
+    2. Original: Status → CANCELLED, Stornierungsgrund wird gespeichert.
+    3. Klon: Eine neue Sitzung mit allen medizinischen Daten des Originals
+       wird mit Status COMPLETED angelegt (parent_id verweist auf Original).
+       So bleiben die klinischen Informationen für eine Korrektur sofort verfügbar.
+
+    Returns:
+        Die neu erstellte Klon-Sitzung (für direktes Weiterarbeiten).
+    """
+    original = db.query(PatientSession).filter_by(id=session_id).with_for_update().first()
+    if not original:
+        raise ValueError(f"Sitzung {session_id} nicht gefunden.")
+    if original.status == SessionStatus.CANCELLED:
+        raise ValueError(f"Sitzung {session_id} ist bereits storniert.")
+
+    try:
+        # ── 1. GEGENBUCHUNGEN (Stornorechnung) ──────────────────────────────
+        existing_entries = db.query(JournalEntry).filter_by(
+            patient_session_id=original.id
+        ).all()
+
+        storno_ref_prefix = f"STORNO-{original.invoice_number or session_id}"
+
+        for entry in existing_entries:
+            storno_ref = f"STORNO-{entry.reference}"
+
+            # Dubletten-Schutz: existiert diese Storno-Buchung schon?
+            if db.query(JournalEntry).filter_by(reference=storno_ref).first():
+                continue
+
+            storno_entry = JournalEntry(
+                patient_session_id=original.id,
+                fiscal_year_id=entry.fiscal_year_id,
+                date=date.today(),
+                description=f"Storno: {entry.description} (Grund: {reason})",
+                reference=storno_ref,
+            )
+            db.add(storno_entry)
+            db.flush()
+
+            for line in entry.lines:
+                # Soll und Haben werden getauscht → Gegenbuchung
+                db.add(JournalEntryLine(
+                    journal_entry_id=storno_entry.id,
+                    account_id=line.account_id,
+                    debit=line.credit,   # ← getauscht
+                    credit=line.debit,   # ← getauscht
+                ))
+
+        # ── 2. ORIGINAL ALS STORNIERT MARKIEREN ────────────────────────────
+        original.status               = SessionStatus.CANCELLED
+        original.cancellation_reason  = reason
+        # is_invoiced bleibt über den Status erhalten; wir setzen keine
+        # separaten Boolean-Felder mehr, da das Model nur noch `status` kennt.
+
+        # ── 3. KLON MIT MEDIZINISCHEN DATEN ERSTELLEN ──────────────────────
+        klon = PatientSession(
+            patient_id         = original.patient_id,
+            user_id            = original.user_id,
+            date               = original.date,
+            time_from          = original.time_from,
+            time_to            = original.time_to,
+            issue              = original.issue,
+            approach           = original.approach,
+            protocol           = original.protocol,
+            booking_text       = original.booking_text,
+            payment_method_id  = original.payment_method_id,
+            vat_id             = original.vat_id,
+            amount             = original.amount,
+            parent_id          = original.id,      # ← Verknüpfung zum Original
+            status             = SessionStatus.COMPLETED,
+            invoice_number     = None,             # ← Klon braucht neue Nummer
+            invoice_version    = 0,
+        )
+        db.add(klon)
+        db.flush()
+
+        db.commit()
+        db.refresh(klon)
+        app_logger.info(
+            f"Sitzung {session_id} storniert. Klon-ID: {klon.id}. Grund: {reason}"
+        )
+        return klon
+
+    except Exception as e:
+        db.rollback()
+        app_logger.error(f"Fehler beim Stornieren der Sitzung {session_id}: {e}")
+        raise
