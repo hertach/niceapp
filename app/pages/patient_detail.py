@@ -587,10 +587,15 @@ def patient_detail_page(navigate) -> None:
 
                 storno_dlg.close()
                 storno_reason_in.value = ""
-                ui.notify("Sitzung storniert – Stornorechnung wird geöffnet.", type="warning")
+                ui.notify(
+                    "Sitzung storniert – Stornorechnung wird geöffnet.",
+                    type="warning",
+                    timeout=5000,
+                )
+
                 main_content.refresh()
 
-                # Stornorechnung-Dokument öffnen
+                # Stornorechnung für das Original öffnen.
                 open_document_dialog(
                     doc_type="Stornorechnung",
                     patient_id=patient_id,
@@ -650,7 +655,7 @@ def patient_detail_page(navigate) -> None:
                             "font-semibold text-amber-800 text-sm"
                         )
                         ui.label(
-                            "Zum Bearbeiten über «Wiederöffnen» in der Tabelle entsperren."
+                            "Zum Bearbeiten bitte Sitzung stornieren und neu erfassen."
                         ).classes("text-xs text-amber-700")
 
         sess_status_banner()
@@ -726,7 +731,7 @@ def patient_detail_page(navigate) -> None:
         def _do_save():
             if state["sess_locked"]:
                 ui.notify(
-                    "Sitzung ist gesperrt – bitte zuerst über «Wiederöffnen» entsperren.",
+                    "Sitzung ist gesperrt – bitte Stornieren und neu erfassen.",
                     type="warning",
                 )
                 return None
@@ -971,7 +976,6 @@ def patient_detail_page(navigate) -> None:
                         return
                     invoice_selection_dlg.close()
 
-                    # Status → INVOICED + Rechnungsnummer setzen
                     with get_session() as db:
                         for sid in sel:
                             s = db.query(PatientSession).filter_by(id=sid).first()
@@ -981,6 +985,11 @@ def patient_detail_page(navigate) -> None:
                                 s.status          = SessionStatus.INVOICED
                                 db.flush()
                         db.commit()
+                        try:
+                            for sid in sel:
+                                book_patient_session(db, sid)
+                        except Exception as ex:
+                            app_logger.error(f"Buchungsfehler: {ex}")
 
                     # Kein refresh() vor dem Dialog (zerstört Parent-Slot).
                     # Refresh passiert in on_success, wenn der Dialog bereits geschlossen ist.
@@ -1228,6 +1237,7 @@ def patient_detail_page(navigate) -> None:
                                 .order_by(PatientSession.date.desc())
                                 .all()
                             )
+
                             all_rows = []
                             for s in sitzungen:
                                 vat_rate     = s.vat_setting.rate if s.vat_setting else 0.0
@@ -1236,9 +1246,7 @@ def patient_detail_page(navigate) -> None:
                                 inv_ver      = s.invoice_version or 0
                                 inv_display  = f"{inv_num}.{inv_ver}" if inv_ver > 0 else inv_num
                                 status_val   = s.status.value if s.status else SessionStatus.OPEN.value
-
-                                # Storniert-Klone (parent_id gesetzt, status COMPLETED) markieren
-                                is_clone = bool(getattr(s, "parent_id", None))
+                                is_clone     = bool(getattr(s, "parent_id", None))
 
                                 all_rows.append({
                                     "id":             s.id,
@@ -1259,7 +1267,6 @@ def patient_detail_page(navigate) -> None:
                                     "can_invoice":  status_val in (
                                         SessionStatus.OPEN.value, SessionStatus.COMPLETED.value
                                     ),
-                                    "can_reopen":   status_val == SessionStatus.INVOICED.value,
                                     "can_cancel":   status_val in (
                                         SessionStatus.INVOICED.value, SessionStatus.PAID.value
                                     ),
@@ -1410,14 +1417,6 @@ def patient_detail_page(navigate) -> None:
                                             <q-tooltip>Bearbeiten / Anzeigen</q-tooltip>
                                         </q-btn>
 
-                                        <!-- Wiederöffnen: nur INVOICED -->
-                                        <q-btn v-if="props.row.can_reopen"
-                                               flat round dense icon="lock_open" size="sm"
-                                               class="text-amber-600"
-                                               @click="$parent.$emit('t_reopen', props.row.id)">
-                                            <q-tooltip>Wiederöffnen (neue Rechnungsnr.)</q-tooltip>
-                                        </q-btn>
-
                                         <!-- Verrechnen: OPEN oder COMPLETED -->
                                         <q-btn v-if="props.row.can_invoice"
                                                flat round dense icon="receipt_long" size="sm"
@@ -1465,29 +1464,6 @@ def patient_detail_page(navigate) -> None:
                             # ── Sammel-Toolbar ────────────────────────────
                             with ui.row().classes("w-full justify-end gap-2 mt-3"):
 
-                                def handle_batch_invoice_success():
-                                    """
-                                    Nach Druckdialog: alle ausgewählten Sitzungen als
-                                    INVOICED markieren + Rechnungsnummer vergeben.
-                                    BUGFIX: db.flush() nach jeder Zuweisung → jeder
-                                    generate_invoice_number()-Aufruf sieht den neusten Wert.
-                                    """
-                                    selected_ids = [r["id"] for r in tbl.selected]
-                                    if selected_ids:
-                                        with get_session() as db:
-                                            for sid in selected_ids:
-                                                s = db.query(PatientSession).filter_by(id=sid).first()
-                                                if s and s.status in (
-                                                    SessionStatus.OPEN, SessionStatus.COMPLETED
-                                                ):
-                                                    s.invoice_number  = generate_invoice_number(db, s.date.year)
-                                                    s.invoice_version = 0
-                                                    s.status          = SessionStatus.INVOICED
-                                                    db.flush()   # ← BUGFIX
-                                            db.commit()
-                                    tbl.selected.clear()
-                                    main_content.refresh()
-
                                 def print_batch_invoice():
                                     invoiceable = [
                                         r for r in tbl.selected if r["can_invoice"]
@@ -1499,7 +1475,6 @@ def patient_detail_page(navigate) -> None:
                                         )
                                         return
 
-                                    # Status → INVOICED + Rechnungsnummer setzen
                                     ids = [r["id"] for r in invoiceable]
                                     with get_session() as db:
                                         for sid in ids:
@@ -1510,11 +1485,16 @@ def patient_detail_page(navigate) -> None:
                                                 s.status          = SessionStatus.INVOICED
                                                 db.flush()
                                         db.commit()
+                                        try:
+                                            for sid in ids:
+                                                book_patient_session(db, sid)
+                                        except Exception as ex:
+                                            app_logger.error(f"Buchungsfehler: {ex}")
 
+                                    tbl.selected.clear()
                                     # KEIN main_content.refresh() hier!
                                     # refresh() zerstört den Parent-Slot der Tabelle bevor
                                     # open_document_dialog läuft → RuntimeError.
-                                    # Stattdessen: refresh erst in on_success (Dialog schon zu).
                                     open_document_dialog(
                                         doc_type="Rechnung",
                                         patient_id=patient_id,
@@ -1544,37 +1524,8 @@ def patient_detail_page(navigate) -> None:
                                 if s:
                                     open_session(s)
 
-                            def on_reopen(msg):
-                                """
-                                INVOICED → COMPLETED.
-                                Alte Nummer wird verworfen, eine komplett neue Nummer
-                                wird aus dem laufenden Zähler generiert:
-                                  z.B.  RE-2026-001  →  RE-2026-027
-                                invoice_version wird auf 0 zurückgesetzt.
-                                """
-                                sid = msg.args
-                                new_num = ""
-                                with get_session() as db:
-                                    s = db.query(PatientSession).filter_by(id=sid).first()
-                                    if s and s.status == SessionStatus.INVOICED:
-                                        new_num           = generate_invoice_number(db, s.date.year)
-                                        s.invoice_number  = new_num
-                                        s.invoice_version = 0          # Reset – frische Nummer
-                                        s.status          = SessionStatus.COMPLETED
-                                        db.flush()
-                                        db.commit()
-                                ui.notify(
-                                    f"Wiedergeöffnet – neue Rechnungsnr. {new_num}",
-                                    type="warning",
-                                )
-                                main_content.refresh()
-
                             def on_invoice(msg):
-                                """
-                                OPEN/COMPLETED → INVOICED.
-                                BUGFIX: flush() stellt sicher, dass die Nummer sofort
-                                in der Session sichtbar ist.
-                                """
+                                """OPEN/COMPLETED → INVOICED mit neuer Rechnungsnummer."""
                                 sid = msg.args
                                 with get_session() as db:
                                     s = db.query(PatientSession).filter_by(id=sid).first()
@@ -1584,7 +1535,7 @@ def patient_detail_page(navigate) -> None:
                                         s.invoice_number  = generate_invoice_number(db, s.date.year)
                                         s.invoice_version = 0
                                         s.status          = SessionStatus.INVOICED
-                                        db.flush()   # ← BUGFIX
+                                        db.flush()
                                         db.commit()
                                         try:
                                             book_patient_session(db, s.id)
@@ -1594,17 +1545,18 @@ def patient_detail_page(navigate) -> None:
                                 main_content.refresh()
 
                             def on_paid(msg):
-                                """INVOICED → PAID."""
+                                """INVOICED → PAID + Zahlungsbuchung (Bank AN 1100) in einer Transaktion."""
                                 sid = msg.args
                                 with get_session() as db:
                                     s = db.query(PatientSession).filter_by(id=sid).first()
                                     if s and s.status == SessionStatus.INVOICED:
                                         s.status = SessionStatus.PAID
-                                        db.commit()
+                                        db.flush()  # Status sichtbar für book_patient_session
                                         try:
-                                            book_patient_session(db, s.id)
+                                            book_patient_session(db, s.id)  # commit() intern
                                         except Exception as ex:
                                             app_logger.error(f"Buchungsfehler: {ex}")
+                                            db.commit()  # Status trotzdem speichern
                                 ui.notify("Sitzung als bezahlt markiert.", type="positive")
                                 main_content.refresh()
 
@@ -1623,7 +1575,6 @@ def patient_detail_page(navigate) -> None:
                                 soft_delete(PatientSession, msg.args)
 
                             tbl.on("t_edit",    on_edit)
-                            tbl.on("t_reopen",  on_reopen)
                             tbl.on("t_invoice", on_invoice)
                             tbl.on("t_paid",    on_paid)
                             tbl.on("t_receipt", on_receipt)

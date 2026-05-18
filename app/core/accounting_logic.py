@@ -158,6 +158,63 @@ def book_patient_session(db: Session, session_id: int) -> None:
     db.commit()
 
 
+def create_invoice_klon(db: Session, session_id: int) -> PatientSession:
+    """
+    Erstellt einen Rechnungs-Klon einer Sitzung.
+
+    Die Original-Sitzung (OPEN/COMPLETED) bleibt unverändert als medizinischer
+    Datensatz. Der Klon erhält INVOICED-Status und eine neue Rechnungsnummer.
+    Mit dem Klon wird weitergearbeitet (drucken, bezahlen, stornieren).
+
+    Returns:
+        Den neu erstellten Rechnungs-Klon.
+    """
+    original = db.query(PatientSession).filter_by(id=session_id).first()
+    if not original:
+        raise ValueError(f"Sitzung {session_id} nicht gefunden.")
+    if original.status not in (SessionStatus.OPEN, SessionStatus.COMPLETED):
+        raise ValueError(
+            f"Sitzung {session_id} kann nicht verrechnet werden "
+            f"(Status: {original.status.value})."
+        )
+
+    new_inv_num = generate_invoice_number(db, original.date.year)
+
+    klon = PatientSession(
+        patient_id        = original.patient_id,
+        user_id           = original.user_id,
+        date              = original.date,
+        time_from         = original.time_from,
+        time_to           = original.time_to,
+        issue             = original.issue,
+        approach          = original.approach,
+        protocol          = original.protocol,
+        booking_text      = original.booking_text,
+        payment_method_id = original.payment_method_id,
+        vat_id            = original.vat_id,
+        amount            = original.amount,
+        parent_id         = original.id,
+        status            = SessionStatus.INVOICED,
+        invoice_number    = new_inv_num,
+        invoice_version   = 0,
+    )
+    db.add(klon)
+    db.flush()
+    db.commit()
+
+    try:
+        book_patient_session(db, klon.id)
+    except Exception as e:
+        app_logger.warning(f"Buchung für Rechnungs-Klon {klon.id} fehlgeschlagen: {e}")
+
+    db.refresh(klon)
+    app_logger.info(
+        f"Rechnungs-Klon erstellt: Original-ID={session_id}, "
+        f"Klon-ID={klon.id}, Rechnungs-Nr.={new_inv_num}"
+    )
+    return klon
+
+
 def cancel_patient_session(db: Session, session_id: int, reason: str) -> PatientSession:
     """
     Vollständige Stornierung einer Sitzung in drei Schritten:
@@ -165,12 +222,12 @@ def cancel_patient_session(db: Session, session_id: int, reason: str) -> Patient
     1. Gegenbuchungen (Stornorechnung): Alle JournalEntries der Original-Sitzung
        werden mit vertauschten Soll/Haben-Werten neu eingebucht.
     2. Original: Status → CANCELLED, Stornierungsgrund wird gespeichert.
-    3. Klon: Eine neue Sitzung mit allen medizinischen Daten des Originals
-       wird mit Status COMPLETED angelegt (parent_id verweist auf Original).
-       So bleiben die klinischen Informationen für eine Korrektur sofort verfügbar.
+    3. Ersatz-Klon: Eine neue Sitzung mit denselben Daten wird als INVOICED mit
+       neuer Rechnungsnummer angelegt (parent_id verweist auf das Original).
+       Damit kann sofort mit der Kopie weitergearbeitet werden.
 
     Returns:
-        Die neu erstellte Klon-Sitzung (für direktes Weiterarbeiten).
+        Den neu erstellten Ersatz-Klon (für direktes Weiterarbeiten).
     """
     original = db.query(PatientSession).filter_by(id=session_id).with_for_update().first()
     if not original:
@@ -218,7 +275,9 @@ def cancel_patient_session(db: Session, session_id: int, reason: str) -> Patient
         # is_invoiced bleibt über den Status erhalten; wir setzen keine
         # separaten Boolean-Felder mehr, da das Model nur noch `status` kennt.
 
-        # ── 3. KLON MIT MEDIZINISCHEN DATEN ERSTELLEN ──────────────────────
+        # ── 3. OFFENER KLON ERSTELLEN ───────────────────────────────────────
+        # Der Klon erhält Status OPEN und keine Rechnungsnummer.
+        # Er kann danach normal verrechnet werden (neue Rechnungsnummer via Verrechnen).
         klon = PatientSession(
             patient_id         = original.patient_id,
             user_id            = original.user_id,
@@ -232,18 +291,18 @@ def cancel_patient_session(db: Session, session_id: int, reason: str) -> Patient
             payment_method_id  = original.payment_method_id,
             vat_id             = original.vat_id,
             amount             = original.amount,
-            parent_id          = original.id,      # ← Verknüpfung zum Original
-            status             = SessionStatus.COMPLETED,
-            invoice_number     = None,             # ← Klon braucht neue Nummer
+            parent_id          = original.id,
+            status             = SessionStatus.OPEN,
+            invoice_number     = None,
             invoice_version    = 0,
         )
         db.add(klon)
         db.flush()
-
         db.commit()
+
         db.refresh(klon)
         app_logger.info(
-            f"Sitzung {session_id} storniert. Klon-ID: {klon.id}. Grund: {reason}"
+            f"Sitzung {session_id} storniert. Klon-ID={klon.id}. Grund: {reason}"
         )
         return klon
 
