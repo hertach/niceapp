@@ -17,7 +17,9 @@ class Patient(Base):
     birthdate = Column(Date, nullable=True)
     gender = Column(String(20), nullable=True)  # <-- NEU: Geschlecht
     notes = Column(Text, nullable=True)
-    storage_uuid = Column(String(36),unique=True,nullable=False,default=lambda: str(uuid_lib.uuid4()),)
+    storage_uuid      = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid_lib.uuid4()))
+    # Optionales eigenes PDF-Passwort; wenn leer → automatisch abgeleitet
+    custom_pdf_password = Column(String(100), nullable=True)
 
     # ── 1:n Beziehungen ──
     addresses = relationship(

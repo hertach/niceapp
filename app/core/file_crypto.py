@@ -1,9 +1,12 @@
-import os
 import base64
+import io
+import os
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
-from cryptography.exceptions import InvalidTag
+from pypdf import PdfReader, PdfWriter
 
 _MASTER_KEY: bytes | None = None  # In-Memory-Cache für die Laufzeit
 
@@ -74,3 +77,64 @@ def decrypt_bytes(storage_uuid: str, cipherdata: bytes) -> bytes:
     except InvalidTag:
         # Logging ohne Details — keine Infos über Schlüssel nach außen
         raise InvalidTag("Datei konnte nicht entschlüsselt werden — Integrität verletzt.")
+
+
+# ── PDF-Passwort-Verschlüsselung ─────────────────────────────────────────────
+
+def derive_patient_password(storage_uuid: str) -> str:
+    """
+    Leitet ein deterministisches, lesbares Passwort für die PDF-Verschlüsselung ab.
+    Format: ABCD-1234-EFGH-5678  (Base32, 4×4 Zeichen, 80 Bit Entropie)
+
+    Das Passwort ist immer gleich für denselben Patienten und kann im UI
+    angezeigt werden, wenn der User eine Datei außerhalb der App öffnen möchte
+    (z.B. Finder / Adobe Reader).
+    """
+    key = derive_patient_key(storage_uuid)   # 32 Bytes HKDF-Output
+    # 10 Bytes → Base32 = exakt 16 Zeichen (keine Padding-Zeichen)
+    raw = base64.b32encode(key[:10]).decode()   # nur A–Z und 2–7, gut tippbar
+    return f"{raw[:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
+
+
+def encrypt_pdf(pdf_bytes: bytes, password: str) -> bytes:
+    """
+    Erzeugt ein AES-256-passwortgeschütztes PDF (PDF-Standard, R=6 / PDF 2.0).
+    Die Datei bleibt ein gültiges PDF — jeder Viewer kann sie mit dem Passwort öffnen.
+    """
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    writer = PdfWriter()
+    writer.append_pages_from_reader(reader)
+    writer.encrypt(
+        user_password=password,
+        owner_password=password,
+        algorithm="AES-256",
+    )
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def decrypt_pdf(pdf_bytes: bytes, password: str) -> bytes:
+    """
+    Entschlüsselt ein passwortgeschütztes PDF und gibt die Klartextbytes zurück.
+    Wirft pypdf.errors.FileNotDecryptedError wenn das Passwort falsch ist.
+    Niemals auf Disk schreiben — nur im RAM verwenden.
+    """
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    if reader.is_encrypted:
+        reader.decrypt(password)
+    writer = PdfWriter()
+    writer.append_pages_from_reader(reader)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def encrypt_pdf_with_transfer_password(pdf_bytes: bytes, transfer_password: str) -> bytes:
+    """
+    Verschlüsselt ein Klartext-PDF mit einem frei wählbaren Transfer-Passwort.
+    Verwendung: E-Mail-Versand, Patientendaten-Export.
+    Das transfer_password wird NICHT aus dem Master-Key abgeleitet —
+    es ist ein vom User definierter Wert (z.B. Geburtsdatum des Patienten).
+    """
+    return encrypt_pdf(pdf_bytes, transfer_password)

@@ -65,6 +65,125 @@ except Exception as e:
     vosk_model = None
     app_logger.error(f"Vosk: {e}")
 
+# ── DATEIEN-TAB ──────────────────────────────────────────────────────────────
+
+def _render_dateien_tab(patient_id: int) -> None:
+    """Passwort-Karte im Dateien-Tab: anzeigen, kopieren, eigenes setzen."""
+    from app.core.file_manager import FileManager
+
+    if not patient_id:
+        ui.label("Bitte zuerst den Patienten speichern.").classes("text-slate-400")
+        return
+
+    with get_session() as db:
+        patient = db.query(Patient).filter_by(id=patient_id).first()
+        if not patient:
+            return
+        fm           = FileManager(patient)
+        active_pw    = fm.patient_pdf_password()
+        derived_pw   = fm.derived_pdf_password()
+        has_custom   = bool(patient.custom_pdf_password)
+
+    pw_state = {"visible": False, "value": patient.custom_pdf_password or ""}
+
+    with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
+        with ui.row().classes("w-full items-center justify-between mb-1"):
+            ui.label("PDF-Dateizugriff").classes("text-[18px] font-medium text-[#1e3a5f]")
+            # Farbiger Badge: automatisch oder eigenes
+            badge_text = "Eigenes Passwort" if has_custom else "Automatisch abgeleitet"
+            badge_cls  = (
+                "text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800"
+                if has_custom else
+                "text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800"
+            )
+            ui.label(badge_text).classes(badge_cls)
+
+        ui.label(
+            "Mit diesem Passwort können verschlüsselte PDF-Dateien des Patienten "
+            "direkt im Finder / PDF-Viewer geöffnet werden."
+        ).classes("text-sm text-slate-500 mb-4")
+
+        # ── Aktives Passwort (read-only, mit Kopieren) ───────────────────────
+        with ui.row().classes("w-full items-center gap-2 mb-4"):
+            pw_display = (
+                ui.input("Aktives Passwort", value=active_pw)
+                .props("outlined dense readonly")
+                .classes("flex-1 font-mono")
+            )
+            pw_display.props("type=password")
+
+            def toggle_pw_visibility():
+                pw_state["visible"] = not pw_state["visible"]
+                pw_display.props(
+                    "type=text" if pw_state["visible"] else "type=password"
+                )
+                eye_btn.props(
+                    'icon=visibility_off' if pw_state["visible"] else 'icon=visibility'
+                )
+
+            eye_btn = ui.button(icon="visibility", on_click=toggle_pw_visibility).props(
+                "flat round dense"
+            ).classes("text-slate-500")
+
+            def copy_pw():
+                ui.run_javascript(
+                    f"navigator.clipboard.writeText('{active_pw}')"
+                )
+                ui.notify("Passwort kopiert!", type="positive", timeout=2000)
+
+            ui.button(icon="content_copy", on_click=copy_pw).props(
+                "flat round dense"
+            ).classes("text-slate-500").tooltip("Passwort kopieren")
+
+        # ── Automatisch abgeleitetes Passwort (Info) ─────────────────────────
+        if has_custom:
+            with ui.row().classes("items-center gap-2 mb-4"):
+                ui.icon("info", size="sm").classes("text-slate-400")
+                ui.label(
+                    f"Abgeleitetes Passwort (Original): {derived_pw}"
+                ).classes("text-xs text-slate-400 font-mono")
+
+        ui.separator().classes("mb-4")
+
+        # ── Eigenes Passwort setzen ───────────────────────────────────────────
+        ui.label("Eigenes Passwort setzen").classes("font-medium text-slate-700 mb-2")
+        ui.label(
+            "⚠️  Achtung: Ein neues Passwort gilt nur für zukünftige Dateien. "
+            "Bereits gespeicherte Dateien bleiben mit dem alten Passwort verschlüsselt."
+        ).classes("text-xs text-amber-700 bg-amber-50 p-2 rounded mb-3")
+
+        custom_input = (
+            ui.input("Eigenes Passwort (leer = automatisch)", value=pw_state["value"])
+            .props("outlined dense")
+            .classes("w-full font-mono mb-3")
+        )
+
+        def save_custom_password():
+            new_pw = custom_input.value.strip()
+            with get_session() as db2:
+                p = db2.query(Patient).filter_by(id=patient_id).first()
+                p.custom_pdf_password = new_pw if new_pw else None
+                db2.commit()
+            if new_pw:
+                ui.notify(f"Eigenes Passwort gespeichert: {new_pw}", type="positive")
+            else:
+                ui.notify("Zurückgesetzt auf automatisch abgeleitetes Passwort.", type="info")
+            main_content.refresh()  # Tab neu laden
+
+        def reset_to_derived():
+            custom_input.set_value("")
+            save_custom_password()
+
+        with ui.row().classes("gap-2"):
+            ui.button("Speichern", icon="save", on_click=save_custom_password).props(
+                "unelevated"
+            ).classes("bg-[#0078d4] text-white")
+            if has_custom:
+                ui.button(
+                    "Zurücksetzen (automatisch)", icon="refresh", on_click=reset_to_derived
+                ).props("flat").classes("text-slate-500")
+
+
 # ── STATUS-KONSTANTEN ────────────────────────────────────────────────────────
 # Sitzung ist schreibgeschützt wenn Status in dieser Menge:
 _LOCKED_STATUSES = {
@@ -1585,6 +1704,6 @@ def patient_detail_page(navigate) -> None:
                     # DATEIEN
                     # ════════════════════════════════════════════════════════
                     elif state["active_tab"] == "Dateien":
-                        ui.label("Dateien kommen hier hin…").classes("text-lg text-slate-500")
+                        _render_dateien_tab(patient_id)
 
             main_content()
