@@ -27,3 +27,5 @@ class AppSetting(Base):
     # ── UPLOAD DIRECTORIES ──
     upload_path_logos = Column(String(255), default="./data/uploads/logos")
     upload_path_templates = Column(String(255), default="./data/uploads/templates")
+    upload_path_patient_documents = Column(String(255), default="./data/uploads/client_files")
+    upload_path_misc = Column(String(255), default="./data/uploads/misc")

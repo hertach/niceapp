@@ -35,6 +35,12 @@ def app_settings_page() -> None:
         current_upload_templates = (
             setting.upload_path_templates or "./data/uploads/templates"
         )
+        current_upload_patient_documents = (
+                setting.upload_path_patient_documents or "./data/uploads/client_files"
+        )
+        current_upload_misc = (
+                setting.upload_path_misc or "./data/uploads/misc"
+        )
 
     with ui.card().classes("w-full max-w-3xl p-8 shadow-sm border border-slate-200"):
 
@@ -53,7 +59,7 @@ def app_settings_page() -> None:
                 if result:
                     input_element.value = result
 
-            ui.label("Upload-Pfade").classes("font-medium text-slate-700")
+            ui.label("Upload-Pfade Logos & Vorlagen").classes("font-medium text-slate-700")
             # Logos
             logo_input = (
                 ui.input("Verzeichnis für Logos", value=current_upload_logos)
@@ -76,6 +82,32 @@ def app_settings_page() -> None:
                     icon="folder", on_click=lambda: pick_dir(template_input)
                 ).props("flat round dense")
 
+            ui.separator().props("dense")
+            ui.label("Upload/Speicher-Pfad Klienten-Dateien").classes("font-medium text-slate-700")
+            # Path Patient Documents
+            patient_documents_input = (
+                ui.input("Verzeichnis für Klienten-Files", value=current_upload_patient_documents)
+                .classes("w-full")
+                .props("outlined dense")
+            )
+            with patient_documents_input.add_slot("append"):
+                ui.button(
+                    icon="folder", on_click=lambda: pick_dir(patient_documents_input)
+                ).props("flat round dense")
+
+            ui.separator().props("dense")
+            ui.label("Upload-Pfad sonstige Dateien").classes("font-medium text-slate-700")
+            # Path uploads misc
+            misc_uploads_input = (
+                ui.input("Verzeichnis für Uploads von sonstigen Dateien", value=current_upload_misc)
+                .classes("w-full")
+                .props("outlined dense")
+            )
+            with misc_uploads_input.add_slot("append"):
+                ui.button(
+                    icon="folder", on_click=lambda: pick_dir(misc_uploads_input)
+                ).props("flat round dense")
+            ui.separator().props("dense")
             ui.label("Backup-Konfiguration").classes("font-medium text-slate-700")
             backup_input = (
                 ui.input(
@@ -157,6 +189,8 @@ def app_settings_page() -> None:
                 s = session.query(AppSetting).first()
                 s.upload_path_logos = logo_input.value
                 s.upload_path_templates = template_input.value
+                s.upload_path_patient_documents = patient_documents_input.value
+                s.upload_path_misc = misc_uploads_input.value
                 s.backup_path = backup_input.value
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value
