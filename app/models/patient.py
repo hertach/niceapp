@@ -1,5 +1,7 @@
 # app/models/patient.py
 import enum
+import uuid as uuid_lib
+
 from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String, Text, Enum
 from sqlalchemy.orm import relationship
 
@@ -15,6 +17,7 @@ class Patient(Base):
     birthdate = Column(Date, nullable=True)
     gender = Column(String(20), nullable=True)  # <-- NEU: Geschlecht
     notes = Column(Text, nullable=True)
+    storage_uuid = Column(String(36),unique=True,nullable=False,default=lambda: str(uuid_lib.uuid4()),)
 
     # ── 1:n Beziehungen ──
     addresses = relationship(

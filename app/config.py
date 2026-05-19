@@ -15,6 +15,9 @@ LOG_PATH = os.getenv("LOG_PATH", "data/log.db")
 PORT = int(os.getenv("PORT", "8080"))
 RELOAD = os.getenv("RELOAD", "false").lower() == "true"
 
+ENCRYPTION_MASTER_KEY = os.getenv("ENCRYPTION_MASTER_KEY", "")
+PATIENT_STORAGE_PATH = os.getenv("PATIENT_STORAGE_PATH", "./data/patients")
+
 GERMAN_LOCALE = {
     "days": [
         "Sonntag",

@@ -6,6 +6,7 @@ from typing import Callable
 from nicegui import app as nicegui_app
 from nicegui import ui
 
+from app.api.files import register_file_routes
 from app.components.layout import _apply_active, _apply_inactive, main_layout
 from app.config import APP_TITLE, PORT, RELOAD, STORAGE_SECRET
 from app.core.accounting_setup import seed_accounting_basics
@@ -89,6 +90,9 @@ def main() -> None:
     nicegui_app.add_static_files("/static", Path(__file__).parent / "static")
     css_path = Path(__file__).parent / "static" / "style.css"
     ui.add_css(css_path.read_text(), shared=True)
+
+    # Verschlüsselte Datei-Download-Endpunkte registrieren (vor ui.run()!)
+    register_file_routes()
 
     @ui.page("/login")
     def login() -> None:
