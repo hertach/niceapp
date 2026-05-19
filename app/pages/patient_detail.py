@@ -18,6 +18,7 @@ from app.core.download_tokens import create_download_token
 from app.core.file_manager import FileManager, _get_global_pdf_password
 from app.models.patient_file import FileCategory, PatientFile
 from app.components.document_dialog import open_document_dialog
+from app.components.inputs import new_button
 from app.core.accounting_logic import (
     book_patient_session,
     cancel_patient_session,
@@ -1349,9 +1350,7 @@ def patient_detail_page(navigate) -> None:
                                     ui.label("Krankenversicherung").classes(
                                         "text-[18px] font-medium text-[#1e3a5f]"
                                     )
-                                    ui.button("Neu", icon="add", on_click=lambda: open_ins()).props(
-                                        "outline dense"
-                                    ).classes("text-[#0078d4]")
+                                    new_button(on_click=lambda: open_ins())
                                 act = state["ins_active"]
                                 if act:
                                     with ui.row().classes(
@@ -1417,9 +1416,7 @@ def patient_detail_page(navigate) -> None:
                             with ui.card().classes("w-full p-6 shadow-sm mb-6"):
                                 with ui.row().classes("w-full items-center justify-between mb-4"):
                                     ui.label(title).classes("text-[18px] font-medium text-[#1e3a5f]")
-                                    ui.button("Neu", icon="add", on_click=lambda: open_fn()).props(
-                                        "outline dense"
-                                    ).classes("text-[#0078d4]")
+                                    new_button(on_click=lambda: open_fn())
                                 if not items:
                                     ui.label("Noch keine Einträge vorhanden.").classes(
                                         "text-slate-400 italic"
