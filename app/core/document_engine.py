@@ -90,7 +90,8 @@ class DocumentEngine:
             doc.render(context)
 
             timestamp = int(time.time())
-            docx_name = f"{patient.last_name}_{doc_type}_{timestamp}.docx"
+            formatted_date = datetime.fromtimestamp(timestamp).strftime('%Y%m%d')
+            docx_name = f"{formatted_date}_{patient.last_name}_{doc_type}.docx"
             docx_path = os.path.join(self.output_dir, docx_name)
             doc.save(docx_path)
 
