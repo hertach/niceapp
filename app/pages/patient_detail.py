@@ -171,14 +171,20 @@ def _render_dateien_tab(patient_id: int) -> None:
                 ui.notify(
                     f"'{filename}' erfolgreich hochgeladen.", type="positive"
                 )
-                content.refresh()
+                await content.refresh()
             except Exception as exc:
                 app_logger.error(f"Upload-Fehler: {exc}")
                 ui.notify(f"Fehler beim Hochladen: {exc}", type="negative")
 
         # ── Zweispaltiges Layout ──────────────────────────────────────────
-        with ui.row().classes("w-full max-w-5xl gap-4 items-start"):
-
+        with ui.row().classes("w-full gap-4 items-start"):
+            with ui.row().classes(
+                    "w-full justify-between items-start mb-4 gap-4 flex-wrap"
+            ):
+                with ui.column().classes("gap-2"):
+                    ui.label("Dateien").classes(
+                        "text-[20px] font-medium text-[#1e3a5f]"
+                    )
             # ── Linke Spalte: Datei-Kategorien ───────────────────────────
             with ui.column().classes("flex-1 gap-3 min-w-0"):
                 for category, (label, icon) in _CATEGORY_LABELS.items():
@@ -187,7 +193,7 @@ def _render_dateien_tab(patient_id: int) -> None:
                     has_files = count > 0
 
                     with ui.expansion(value=has_files).classes(
-                        "w-full shadow-sm rounded"
+                        "w-full shadow-sm rounded bg-white"
                     ) as exp:
                         with exp.add_slot("header"):
                             with ui.row().classes("items-center gap-2 w-full"):
@@ -257,7 +263,7 @@ def _render_dateien_tab(patient_id: int) -> None:
                                             ).tooltip("Löschen")
 
             # ── Rechte Spalte: Ordner-Button + Upload ─────────────────────
-            with ui.column().classes("w-52 shrink-0 gap-3"):
+            with ui.column().classes("w-84 shrink-0 gap-3"):
 
                 with ui.card().classes("w-full p-3 shadow-sm border border-slate-200"):
                     ui.label("Klienten-Ordner").classes(
@@ -1320,7 +1326,7 @@ def patient_detail_page(navigate) -> None:
                     # PERSONALIEN
                     # ════════════════════════════════════════════════════════
                     if state["active_tab"] == "Personalien":
-                        with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
+                        with ui.card().classes("w-full p-6 shadow-sm mb-6"):
                             ui.label("Stammdaten").classes(
                                 "text-[18px] font-medium mb-4 text-[#1e3a5f]"
                             )
@@ -1337,7 +1343,7 @@ def patient_detail_page(navigate) -> None:
 
                         if patient_id:
                             with ui.card().classes(
-                                "w-full max-w-3xl p-6 shadow-sm border-l-4 border-[#0078d4]"
+                                "w-full p-6 shadow-sm border-l-4 border-[#0078d4]"
                             ):
                                 with ui.row().classes("w-full items-center justify-between mb-4"):
                                     ui.label("Krankenversicherung").classes(
@@ -1400,8 +1406,15 @@ def patient_detail_page(navigate) -> None:
                     # KONTAKTANGABEN
                     # ════════════════════════════════════════════════════════
                     elif state["active_tab"] == "Kontaktangaben":
+                        with ui.row().classes(
+                            "w-full justify-between items-start mb-4 gap-4 flex-wrap"
+                        ):
+                            with ui.column().classes("gap-2"):
+                                ui.label("Kontaktangaben").classes(
+                                    "text-[20px] font-medium text-[#1e3a5f]"
+                                )
                         def draw_list(title, items, open_fn, model_cls, fmt_main, fmt_sub):
-                            with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
+                            with ui.card().classes("w-full p-6 shadow-sm mb-6"):
                                 with ui.row().classes("w-full items-center justify-between mb-4"):
                                     ui.label(title).classes("text-[18px] font-medium text-[#1e3a5f]")
                                     ui.button("Neu", icon="add", on_click=lambda: open_fn()).props(
