@@ -94,12 +94,25 @@ def main() -> None:
     # Verschlüsselte Datei-Download-Endpunkte registrieren (vor ui.run()!)
     register_file_routes()
 
+    @ui.page("/setup")
+    def setup() -> None:
+        from app.pages.setup import setup_page
+        setup_page()
+
     @ui.page("/login")
     def login() -> None:
+        import os
+        if not os.environ.get("ENCRYPTION_MASTER_KEY"):
+            ui.navigate.to("/setup")
+            return
         login_page()
 
     @ui.page("/")
     def index() -> None:
+        import os
+        if not os.environ.get("ENCRYPTION_MASTER_KEY"):
+            ui.navigate.to("/setup")
+            return
         if not nicegui_app.storage.user.get("authenticated"):
             ui.navigate.to("/login")
             return

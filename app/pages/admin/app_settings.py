@@ -1,9 +1,12 @@
 # app/pages/admin/app_settings.py
 from nicegui import ui
 
+import os
+
 from app.components.directory_picker import DirectoryPicker
 from app.core.backup import perform_backup
 from app.core.database import get_session
+from app.core.emergency_kit import generate_emergency_kit_pdf
 from app.core.logger import set_log_level, update_console_logger
 from app.models.app_setting import AppSetting
 
@@ -47,6 +50,32 @@ def app_settings_page() -> None:
     with ui.card().classes("w-full max-w-3xl p-8 shadow-sm border border-slate-200"):
 
         with ui.column().classes("w-full gap-6"):
+
+            # ── Sicherheit ────────────────────────────────────────────────────
+            ui.label("Sicherheit").classes("font-medium text-slate-700")
+            ui.label(
+                "Laden Sie das Notfall-Kit herunter falls Sie das Original verloren haben. "
+                "Das PDF enthält den Master-Key als Text und QR-Code."
+            ).classes("text-xs text-slate-500 mb-1")
+
+            def download_emergency_kit():
+                key = os.environ.get("ENCRYPTION_MASTER_KEY", "")
+                if not key:
+                    ui.notify(
+                        "Kein Master-Key konfiguriert.", type="negative"
+                    )
+                    return
+                from app.config import APP_TITLE
+                pdf = generate_emergency_kit_pdf(key, APP_TITLE)
+                ui.download(pdf, f"{APP_TITLE}_Notfall-Key.pdf")
+
+            ui.button(
+                "Notfall-Kit exportieren",
+                icon="save_alt",
+                on_click=download_emergency_kit,
+            ).props("outline").classes("text-[#0078d4]")
+
+            ui.separator().props("dense")
 
             async def open_picker():
                 # Wir übergeben den aktuell eingetippten Pfad als Startpunkt
