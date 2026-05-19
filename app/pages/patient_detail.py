@@ -3,10 +3,13 @@ import asyncio
 import base64
 import json
 import os
+import platform
+import subprocess
 import tempfile
 import urllib.request
 import zipfile
 from datetime import date, datetime
+from pathlib import Path
 
 from nicegui import app as nicegui_app
 from nicegui import ui
@@ -69,129 +72,224 @@ except Exception as e:
 
 # ── DATEIEN-TAB ──────────────────────────────────────────────────────────────
 
+_CATEGORY_LABELS = {
+    FileCategory.RECHNUNG: ("Rechnungen",  "receipt_long"),
+    FileCategory.STORNO:   ("Stornos",     "cancel"),
+    FileCategory.QUITTUNG: ("Quittungen",  "fact_check"),
+    FileCategory.UPLOAD:   ("Uploads",     "upload_file"),
+}
+
+
 def _render_dateien_tab(patient_id: int) -> None:
     if not patient_id:
         ui.label("Bitte zuerst den Patienten speichern.").classes("text-slate-400")
         return
 
-    with get_session() as db:
-        patient = db.query(Patient).filter_by(id=patient_id).first()
-        if not patient:
-            return
-        fm         = FileManager(patient)
-        active_pw  = fm.resolve_pdf_password()
-        global_pw  = _get_global_pdf_password()
-        all_files  = fm.list_files(db)
+    @ui.refreshable
+    def content() -> None:
+        # ── Daten laden ───────────────────────────────────────────────────
+        with get_session() as db:
+            patient = db.query(Patient).filter_by(id=patient_id).first()
+            if not patient:
+                ui.label("Patient nicht gefunden.").classes("text-slate-400")
+                return
+            fm          = FileManager(patient)
+            folder_path = str(fm.base_path)
+            all_files   = fm.list_files(db)
 
-    # Dateien nach Kategorie gruppieren
-    by_category: dict[FileCategory, list] = {c: [] for c in FileCategory}
-    for f in all_files:
-        by_category[f.category].append(f)
+        by_category: dict = {c: [] for c in FileCategory}
+        for f in all_files:
+            by_category[f.category].append(f)
 
-    # ── File-Explorer ─────────────────────────────────────────────────────────
-    _CATEGORY_LABELS = {
-        FileCategory.RECHNUNG: ("Rechnungen",  "receipt_long"),
-        FileCategory.STORNO:   ("Stornos",     "cancel"),
-        FileCategory.QUITTUNG: ("Quittungen",  "fact_check"),
-        FileCategory.UPLOAD:   ("Uploads",     "upload_file"),
-    }
+        # ── Hilfsfunktionen ───────────────────────────────────────────────
+        def _fmt_size(b: int | None) -> str:
+            if not b:
+                return "—"
+            if b < 1024:
+                return f"{b} B"
+            if b < 1024 ** 2:
+                return f"{b / 1024:.1f} KB"
+            return f"{b / 1024 ** 2:.1f} MB"
 
-    def _fmt_size(b: int | None) -> str:
-        if not b:
-            return "—"
-        if b < 1024:
-            return f"{b} B"
-        if b < 1024 ** 2:
-            return f"{b/1024:.1f} KB"
-        return f"{b/1024**2:.1f} MB"
+        def _open_file(file_uuid: str) -> None:
+            user_id = nicegui_app.storage.user.get("user_id", 0)
+            token   = create_download_token(file_uuid, user_id)
+            ui.navigate.to(f"/files/download/{file_uuid}?token={token}", new_tab=True)
 
-    def _open_file(file_uuid: str):
-        user_id = nicegui_app.storage.user.get("user_id", 0)
-        token   = create_download_token(file_uuid, user_id)
-        ui.navigate.to(f"/files/download/{file_uuid}?token={token}", new_tab=True)
-
-    def _confirm_delete(file_uuid: str, filename: str):
-        with ui.dialog() as dlg, ui.card().classes("p-6 min-w-[340px]"):
-            ui.label("Datei löschen").classes("text-[16px] font-semibold text-red-700 mb-2")
-            ui.label(f'„{filename}" wirklich löschen?').classes("text-sm text-slate-600 mb-4")
-            with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Abbrechen", on_click=dlg.close).props('flat text-color="grey"')
-                def do_delete(uuid=file_uuid):
-                    user_id = nicegui_app.storage.user.get("user_id", 0)
-                    with get_session() as db2:
-                        p2 = db2.query(Patient).filter_by(id=patient_id).first()
-                        FileManager(p2).delete(uuid, db2, user_id)
-                        db2.commit()
-                    dlg.close()
-                    ui.notify("Datei gelöscht.", type="positive")
-                    main_content.refresh()
-                ui.button("Löschen", icon="delete", on_click=do_delete).props(
-                    "unelevated"
-                ).classes("bg-red-600 text-white")
-        dlg.open()
-
-    with ui.column().classes("w-full max-w-4xl gap-3"):
-        for category, (label, icon) in _CATEGORY_LABELS.items():
-            files = by_category[category]
-            count = len(files)
-
-            header_cls = (
-                "text-[14px] font-semibold text-[#1e3a5f]"
-                if count > 0 else
-                "text-[14px] font-semibold text-slate-400"
-            )
-
-            with ui.expansion(value=count > 0).classes("w-full shadow-sm rounded") as exp:
-                with exp.add_slot("header"):
-                    with ui.row().classes("items-center gap-2 w-full"):
-                        ui.icon(icon, size="xs").classes(
-                            "text-[#0078d4]" if count > 0 else "text-slate-300"
-                        )
-                        ui.label(label).classes(header_cls)
-                        ui.badge(str(count), color="primary" if count > 0 else "grey"
-                                 ).classes("ml-1")
-
-                if not files:
-                    ui.label("Keine Dateien vorhanden.").classes(
-                        "text-xs text-slate-400 py-2 px-4"
+        def _confirm_delete(file_uuid: str, filename: str) -> None:
+            with ui.dialog() as dlg, ui.card().classes("p-6 min-w-[340px]"):
+                ui.label("Datei löschen").classes(
+                    "text-[16px] font-semibold text-red-700 mb-2"
+                )
+                ui.label(f'„{filename}" wirklich löschen?').classes(
+                    "text-sm text-slate-600 mb-4"
+                )
+                with ui.row().classes("w-full justify-end gap-2"):
+                    ui.button("Abbrechen", on_click=dlg.close).props(
+                        'flat text-color="grey"'
                     )
-                else:
-                    with ui.column().classes("w-full gap-0"):
-                        for i, f in enumerate(files):
-                            row_cls = "w-full px-4 py-2 " + (
-                                "bg-slate-50" if i % 2 == 0 else "bg-white"
+
+                    def do_delete(uuid=file_uuid) -> None:
+                        user_id = nicegui_app.storage.user.get("user_id", 0)
+                        with get_session() as db2:
+                            p2 = db2.query(Patient).filter_by(id=patient_id).first()
+                            FileManager(p2).delete(uuid, db2, user_id)
+                            db2.commit()
+                        dlg.close()
+                        ui.notify("Datei gelöscht.", type="positive")
+                        content.refresh()  # eigener Scope — kein main_content nötig
+
+                    ui.button("Löschen", icon="delete", on_click=do_delete).props(
+                        "unelevated"
+                    ).classes("bg-red-600 text-white")
+            dlg.open()
+
+        # ── Layout ────────────────────────────────────────────────────────
+        with ui.column().classes("w-full max-w-4xl gap-4"):
+
+            # ── 1. Klienten-Ordner ────────────────────────────────────────
+            with ui.card().classes(
+                "w-full p-4 shadow-sm border border-slate-200"
+            ):
+                with ui.row().classes("items-center gap-3 w-full flex-nowrap"):
+                    ui.icon("folder", size="sm").classes(
+                        "text-[#0078d4] shrink-0"
+                    )
+                    ui.label("Klienten-Ordner:").classes(
+                        "text-sm font-medium text-slate-600 shrink-0"
+                    )
+                    ui.label(folder_path).classes(
+                        "text-sm text-slate-500 flex-1 truncate font-mono"
+                    )
+
+                    def _open_folder(p: str = folder_path) -> None:
+                        Path(p).mkdir(parents=True, exist_ok=True)
+                        if platform.system() == "Darwin":
+                            subprocess.run(["open", p])
+                        elif platform.system() == "Windows":
+                            subprocess.run(["explorer", p])
+                        else:
+                            subprocess.run(["xdg-open", p])
+
+                    ui.button(
+                        "Im Finder öffnen",
+                        icon="folder_open",
+                        on_click=_open_folder,
+                    ).props("outline dense").classes("text-[#0078d4] shrink-0")
+
+            # ── 2. Datei-Upload ───────────────────────────────────────────
+            with ui.card().classes(
+                "w-full p-4 shadow-sm border border-slate-200"
+            ):
+                ui.label("Dateien hochladen").classes(
+                    "text-sm font-semibold text-slate-700 mb-1"
+                )
+                ui.label(
+                    "Dateien werden automatisch verschlüsselt gespeichert "
+                    "(PDFs mit Passwort, alle anderen mit AES-256)."
+                ).classes("text-xs text-slate-400 mb-3")
+
+                async def handle_upload(e) -> None:
+                    user_id  = nicegui_app.storage.user.get("user_id", 0)
+                    filename = e.file.name
+                    data     = await e.file.read()
+                    try:
+                        with get_session() as db:
+                            p = db.query(Patient).filter_by(id=patient_id).first()
+                            FileManager(p).upload(
+                                data, filename, FileCategory.UPLOAD, db, user_id
                             )
-                            with ui.row().classes(row_cls + " items-center gap-2"):
-                                # Icon je nach Typ
-                                f_icon = "picture_as_pdf" if (
-                                    f.mime_type == "application/pdf"
-                                ) else "insert_drive_file"
-                                ui.icon(f_icon, size="xs").classes("text-red-400 shrink-0")
+                            db.commit()
+                        ui.notify(
+                            f"'{filename}' erfolgreich hochgeladen.", type="positive"
+                        )
+                        content.refresh()
+                    except Exception as exc:
+                        app_logger.error(f"Upload-Fehler: {exc}")
+                        ui.notify(f"Fehler beim Hochladen: {exc}", type="negative")
 
-                                # Name + Datum
-                                with ui.column().classes("flex-1 gap-0 min-w-0"):
-                                    ui.label(f.original_name).classes(
-                                        "text-sm font-medium text-slate-800 truncate"
+                ui.upload(
+                    on_upload=handle_upload,
+                    auto_upload=True,
+                    multiple=True,
+                ).props("flat bordered").classes("w-full")
+
+            # ── 3. Datei-Kategorien (alle 4 immer sichtbar) ───────────────
+            for category, (label, icon) in _CATEGORY_LABELS.items():
+                files     = by_category[category]
+                count     = len(files)
+                has_files = count > 0
+
+                with ui.expansion(value=has_files).classes(
+                    "w-full shadow-sm rounded"
+                ) as exp:
+                    with exp.add_slot("header"):
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            ui.icon(icon, size="xs").classes(
+                                "text-[#0078d4]" if has_files else "text-slate-300"
+                            )
+                            ui.label(label).classes(
+                                "text-[14px] font-semibold "
+                                + ("text-[#1e3a5f]" if has_files else "text-slate-400")
+                            )
+                            ui.badge(
+                                str(count),
+                                color="primary" if has_files else "grey",
+                            ).classes("ml-1")
+
+                    if not files:
+                        ui.label("Keine Dateien vorhanden.").classes(
+                            "text-xs text-slate-400 py-2 px-4"
+                        )
+                    else:
+                        with ui.column().classes("w-full gap-0"):
+                            for i, f in enumerate(files):
+                                row_bg  = "bg-slate-50" if i % 2 == 0 else "bg-white"
+                                f_icon  = (
+                                    "picture_as_pdf"
+                                    if f.mime_type == "application/pdf"
+                                    else "insert_drive_file"
+                                )
+                                f_icon_cls = (
+                                    "text-red-400"
+                                    if f.mime_type == "application/pdf"
+                                    else "text-slate-400"
+                                )
+                                with ui.row().classes(
+                                    f"w-full px-4 py-2 {row_bg} items-center gap-2"
+                                ):
+                                    ui.icon(f_icon, size="xs").classes(
+                                        f"{f_icon_cls} shrink-0"
                                     )
-                                    date_str = f.created_at.strftime("%d.%m.%Y %H:%M") if f.created_at else "—"
-                                    ui.label(
-                                        f"{date_str}  ·  {_fmt_size(f.file_size_bytes)}"
-                                    ).classes("text-xs text-slate-400")
+                                    with ui.column().classes("flex-1 gap-0 min-w-0"):
+                                        ui.label(f.original_name).classes(
+                                            "text-sm font-medium text-slate-800 truncate"
+                                        )
+                                        date_str = (
+                                            f.created_at.strftime("%d.%m.%Y %H:%M")
+                                            if f.created_at
+                                            else "—"
+                                        )
+                                        ui.label(
+                                            f"{date_str}  ·  {_fmt_size(f.file_size_bytes)}"
+                                        ).classes("text-xs text-slate-400")
 
-                                # Aktionen
-                                ui.button(
-                                    icon="open_in_new",
-                                    on_click=lambda uuid=f.file_uuid: _open_file(uuid),
-                                ).props("flat round dense").classes(
-                                    "text-[#0078d4]"
-                                ).tooltip("Öffnen / Herunterladen")
+                                    ui.button(
+                                        icon="open_in_new",
+                                        on_click=lambda uuid=f.file_uuid: _open_file(uuid),
+                                    ).props("flat round dense").classes(
+                                        "text-[#0078d4]"
+                                    ).tooltip("Öffnen / Herunterladen")
 
-                                # ui.button(
-                                #     icon="delete_outline",
-                                #     on_click=lambda uuid=f.file_uuid, name=f.original_name: _confirm_delete(uuid, name),
-                                # ).props("flat round dense").classes(
-                                #     "text-red-400"
-                                # ).tooltip("Löschen")
+                                    ui.button(
+                                        icon="delete_outline",
+                                        on_click=lambda uuid=f.file_uuid,
+                                        name=f.original_name: _confirm_delete(uuid, name),
+                                    ).props("flat round dense").classes(
+                                        "text-red-400"
+                                    ).tooltip("Löschen")
+
+    content()
 
 
 # ── STATUS-KONSTANTEN ────────────────────────────────────────────────────────
