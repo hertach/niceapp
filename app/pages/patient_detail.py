@@ -101,6 +101,9 @@ def _render_dateien_tab(patient_id: int) -> None:
         for f in all_files:
             by_category[f.category].append(f)
 
+        # ── Rolle prüfen ──────────────────────────────────────────────────
+        is_admin = nicegui_app.storage.user.get("role", "") == "admin"
+
         # ── Hilfsfunktionen ───────────────────────────────────────────────
         def _fmt_size(b: int | None) -> str:
             if not b:
@@ -144,150 +147,140 @@ def _render_dateien_tab(patient_id: int) -> None:
                     ).classes("bg-red-600 text-white")
             dlg.open()
 
-        # ── Layout ────────────────────────────────────────────────────────
-        with ui.column().classes("w-full max-w-4xl gap-4"):
+        # ── Hilfsfunktionen für rechte Spalte ────────────────────────────
+        def _open_folder(p: str = folder_path) -> None:
+            Path(p).mkdir(parents=True, exist_ok=True)
+            if platform.system() == "Darwin":
+                subprocess.run(["open", p])
+            elif platform.system() == "Windows":
+                subprocess.run(["explorer", p])
+            else:
+                subprocess.run(["xdg-open", p])
 
-            # ── 1. Klienten-Ordner ────────────────────────────────────────
-            with ui.card().classes(
-                "w-full p-4 shadow-sm border border-slate-200"
-            ):
-                with ui.row().classes("items-center gap-3 w-full flex-nowrap"):
-                    ui.icon("folder", size="sm").classes(
-                        "text-[#0078d4] shrink-0"
+        async def handle_upload(e) -> None:
+            user_id  = nicegui_app.storage.user.get("user_id", 0)
+            filename = e.file.name
+            data     = await e.file.read()
+            try:
+                with get_session() as db:
+                    p = db.query(Patient).filter_by(id=patient_id).first()
+                    FileManager(p).upload(
+                        data, filename, FileCategory.UPLOAD, db, user_id
                     )
-                    ui.label("Klienten-Ordner:").classes(
-                        "text-sm font-medium text-slate-600 shrink-0"
-                    )
-                    ui.label(folder_path).classes(
-                        "text-sm text-slate-500 flex-1 truncate font-mono"
-                    )
+                    db.commit()
+                ui.notify(
+                    f"'{filename}' erfolgreich hochgeladen.", type="positive"
+                )
+                content.refresh()
+            except Exception as exc:
+                app_logger.error(f"Upload-Fehler: {exc}")
+                ui.notify(f"Fehler beim Hochladen: {exc}", type="negative")
 
-                    def _open_folder(p: str = folder_path) -> None:
-                        Path(p).mkdir(parents=True, exist_ok=True)
-                        if platform.system() == "Darwin":
-                            subprocess.run(["open", p])
-                        elif platform.system() == "Windows":
-                            subprocess.run(["explorer", p])
+        # ── Zweispaltiges Layout ──────────────────────────────────────────
+        with ui.row().classes("w-full max-w-5xl gap-4 items-start"):
+
+            # ── Linke Spalte: Datei-Kategorien ───────────────────────────
+            with ui.column().classes("flex-1 gap-3 min-w-0"):
+                for category, (label, icon) in _CATEGORY_LABELS.items():
+                    files     = by_category[category]
+                    count     = len(files)
+                    has_files = count > 0
+
+                    with ui.expansion(value=has_files).classes(
+                        "w-full shadow-sm rounded"
+                    ) as exp:
+                        with exp.add_slot("header"):
+                            with ui.row().classes("items-center gap-2 w-full"):
+                                ui.icon(icon, size="xs").classes(
+                                    "text-[#0078d4]" if has_files else "text-slate-300"
+                                )
+                                ui.label(label).classes(
+                                    "text-[14px] font-semibold "
+                                    + ("text-[#1e3a5f]" if has_files else "text-slate-400")
+                                )
+                                ui.badge(
+                                    str(count),
+                                    color="primary" if has_files else "grey",
+                                ).classes("ml-1")
+
+                        if not files:
+                            ui.label("Keine Dateien vorhanden.").classes(
+                                "text-xs text-slate-400 py-2 px-4"
+                            )
                         else:
-                            subprocess.run(["xdg-open", p])
+                            with ui.column().classes("w-full gap-0"):
+                                for i, f in enumerate(files):
+                                    row_bg     = "bg-slate-50" if i % 2 == 0 else "bg-white"
+                                    f_icon     = (
+                                        "picture_as_pdf"
+                                        if f.mime_type == "application/pdf"
+                                        else "insert_drive_file"
+                                    )
+                                    f_icon_cls = (
+                                        "text-red-400"
+                                        if f.mime_type == "application/pdf"
+                                        else "text-slate-400"
+                                    )
+                                    with ui.row().classes(
+                                        f"w-full px-4 py-2 {row_bg} items-center gap-2"
+                                    ):
+                                        ui.icon(f_icon, size="xs").classes(
+                                            f"{f_icon_cls} shrink-0"
+                                        )
+                                        with ui.column().classes("flex-1 gap-0 min-w-0"):
+                                            ui.label(f.original_name).classes(
+                                                "text-sm font-medium text-slate-800 truncate"
+                                            )
+                                            date_str = (
+                                                f.created_at.strftime("%d.%m.%Y %H:%M")
+                                                if f.created_at
+                                                else "—"
+                                            )
+                                            ui.label(
+                                                f"{date_str}  ·  {_fmt_size(f.file_size_bytes)}"
+                                            ).classes("text-xs text-slate-400")
 
+                                        ui.button(
+                                            icon="open_in_new",
+                                            on_click=lambda uuid=f.file_uuid: _open_file(uuid),
+                                        ).props("flat round dense").classes(
+                                            "text-[#0078d4]"
+                                        ).tooltip("Öffnen / Herunterladen")
+
+                                        if is_admin:
+                                            ui.button(
+                                                icon="delete_outline",
+                                                on_click=lambda uuid=f.file_uuid,
+                                                name=f.original_name: _confirm_delete(uuid, name),
+                                            ).props("flat round dense").classes(
+                                                "text-red-400"
+                                            ).tooltip("Löschen")
+
+            # ── Rechte Spalte: Ordner-Button + Upload ─────────────────────
+            with ui.column().classes("w-52 shrink-0 gap-3"):
+
+                with ui.card().classes("w-full p-3 shadow-sm border border-slate-200"):
+                    ui.label("Klienten-Ordner").classes(
+                        "text-xs font-semibold text-slate-500 mb-2"
+                    )
                     ui.button(
                         "Im Finder öffnen",
                         icon="folder_open",
                         on_click=_open_folder,
-                    ).props("outline dense").classes("text-[#0078d4] shrink-0")
+                    ).props("outline dense").classes("text-[#0078d4] w-full")
 
-            # ── 2. Datei-Upload ───────────────────────────────────────────
-            with ui.card().classes(
-                "w-full p-4 shadow-sm border border-slate-200"
-            ):
-                ui.label("Dateien hochladen").classes(
-                    "text-sm font-semibold text-slate-700 mb-1"
-                )
-                ui.label(
-                    "Dateien werden automatisch verschlüsselt gespeichert "
-                    "(PDFs mit Passwort, alle anderen mit AES-256)."
-                ).classes("text-xs text-slate-400 mb-3")
-
-                async def handle_upload(e) -> None:
-                    user_id  = nicegui_app.storage.user.get("user_id", 0)
-                    filename = e.file.name
-                    data     = await e.file.read()
-                    try:
-                        with get_session() as db:
-                            p = db.query(Patient).filter_by(id=patient_id).first()
-                            FileManager(p).upload(
-                                data, filename, FileCategory.UPLOAD, db, user_id
-                            )
-                            db.commit()
-                        ui.notify(
-                            f"'{filename}' erfolgreich hochgeladen.", type="positive"
-                        )
-                        content.refresh()
-                    except Exception as exc:
-                        app_logger.error(f"Upload-Fehler: {exc}")
-                        ui.notify(f"Fehler beim Hochladen: {exc}", type="negative")
-
-                ui.upload(
-                    on_upload=handle_upload,
-                    auto_upload=True,
-                    multiple=True,
-                ).props("flat bordered").classes("w-full")
-
-            # ── 3. Datei-Kategorien (alle 4 immer sichtbar) ───────────────
-            for category, (label, icon) in _CATEGORY_LABELS.items():
-                files     = by_category[category]
-                count     = len(files)
-                has_files = count > 0
-
-                with ui.expansion(value=has_files).classes(
-                    "w-full shadow-sm rounded"
-                ) as exp:
-                    with exp.add_slot("header"):
-                        with ui.row().classes("items-center gap-2 w-full"):
-                            ui.icon(icon, size="xs").classes(
-                                "text-[#0078d4]" if has_files else "text-slate-300"
-                            )
-                            ui.label(label).classes(
-                                "text-[14px] font-semibold "
-                                + ("text-[#1e3a5f]" if has_files else "text-slate-400")
-                            )
-                            ui.badge(
-                                str(count),
-                                color="primary" if has_files else "grey",
-                            ).classes("ml-1")
-
-                    if not files:
-                        ui.label("Keine Dateien vorhanden.").classes(
-                            "text-xs text-slate-400 py-2 px-4"
-                        )
-                    else:
-                        with ui.column().classes("w-full gap-0"):
-                            for i, f in enumerate(files):
-                                row_bg  = "bg-slate-50" if i % 2 == 0 else "bg-white"
-                                f_icon  = (
-                                    "picture_as_pdf"
-                                    if f.mime_type == "application/pdf"
-                                    else "insert_drive_file"
-                                )
-                                f_icon_cls = (
-                                    "text-red-400"
-                                    if f.mime_type == "application/pdf"
-                                    else "text-slate-400"
-                                )
-                                with ui.row().classes(
-                                    f"w-full px-4 py-2 {row_bg} items-center gap-2"
-                                ):
-                                    ui.icon(f_icon, size="xs").classes(
-                                        f"{f_icon_cls} shrink-0"
-                                    )
-                                    with ui.column().classes("flex-1 gap-0 min-w-0"):
-                                        ui.label(f.original_name).classes(
-                                            "text-sm font-medium text-slate-800 truncate"
-                                        )
-                                        date_str = (
-                                            f.created_at.strftime("%d.%m.%Y %H:%M")
-                                            if f.created_at
-                                            else "—"
-                                        )
-                                        ui.label(
-                                            f"{date_str}  ·  {_fmt_size(f.file_size_bytes)}"
-                                        ).classes("text-xs text-slate-400")
-
-                                    ui.button(
-                                        icon="open_in_new",
-                                        on_click=lambda uuid=f.file_uuid: _open_file(uuid),
-                                    ).props("flat round dense").classes(
-                                        "text-[#0078d4]"
-                                    ).tooltip("Öffnen / Herunterladen")
-
-                                    ui.button(
-                                        icon="delete_outline",
-                                        on_click=lambda uuid=f.file_uuid,
-                                        name=f.original_name: _confirm_delete(uuid, name),
-                                    ).props("flat round dense").classes(
-                                        "text-red-400"
-                                    ).tooltip("Löschen")
+                with ui.card().classes("w-full p-3 shadow-sm border border-slate-200"):
+                    ui.label("Datei hochladen").classes(
+                        "text-xs font-semibold text-slate-500 mb-1"
+                    )
+                    ui.label("Verschlüsselt gespeichert.").classes(
+                        "text-xs text-slate-400 mb-2"
+                    )
+                    ui.upload(
+                        on_upload=handle_upload,
+                        auto_upload=True,
+                        multiple=True,
+                    ).props("flat bordered").classes("w-full")
 
     content()
 
