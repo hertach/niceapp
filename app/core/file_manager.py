@@ -1,3 +1,4 @@
+import base64
 import mimetypes
 import os
 import uuid as uuid_lib
@@ -14,6 +15,7 @@ from app.core.file_crypto import (
     derive_patient_password,
     encrypt_bytes,
     encrypt_pdf,
+    encrypt_pdf_with_transfer_password,
 )
 from app.core.logger import app_logger
 from app.models.app_setting import AppSetting
@@ -21,10 +23,7 @@ from app.models.patient_file import EncryptionType, FileCategory, PatientFile
 
 
 def _get_storage_path() -> str:
-    """
-    Liest den Speicherpfad für Patientendateien aus den App-Einstellungen.
-    Priorität: AppSetting.upload_path_patient_documents → .env → Hardcoded-Default
-    """
+    """Liest Speicherpfad aus AppSetting → .env → Default."""
     with get_session() as session:
         setting = session.query(AppSetting).first()
         if setting and setting.upload_path_patient_documents:
@@ -32,20 +31,27 @@ def _get_storage_path() -> str:
     return PATIENT_STORAGE_PATH
 
 
+def _get_global_pdf_password() -> str | None:
+    """Gibt das globale PDF-Passwort aus den Settings zurück, oder None."""
+    with get_session() as session:
+        setting = session.query(AppSetting).first()
+        if setting and setting.pdf_password:
+            return setting.pdf_password
+    return None
+
+
 class FileManager:
     """
-    Zentraler Einstiegspunkt für alle Datei-Operationen eines Patienten.
+    Verwaltet verschlüsselte Patientendateien.
 
-    Verschlüsselungsstrategie:
-      PDF-Dateien  → PDF AES-256 (Standard-Passwortschutz)
-                     → Datei bleibt gültiges PDF, in Finder mit Passwort öffenbar
-                     → Dateiname auf Disk: {uuid}.pdf
-      Andere Dateien → AES-256-GCM (opaker Blob)
-                     → Nur über die App zugänglich
-                     → Dateiname auf Disk: {uuid}
+    Passwort-Priorität für PDFs:
+      1. AppSetting.pdf_password  (globales Passwort aus den Settings)
+      2. Patient.custom_pdf_password  (patientenspezifisches Passwort)
+      3. derive_patient_password()  (automatisch abgeleitet, immer verfügbar)
 
-    Passwort für PDF-Dateien: via derive_patient_password() — deterministisch,
-    im UI anzeigbar, nie separat gespeichert.
+    Das verwendete Passwort wird AES-verschlüsselt pro Datei gespeichert
+    (PatientFile.pdf_password_enc), damit Passwortänderungen bestehende
+    Dateien nicht kaputt machen.
     """
 
     def __init__(self, patient: "Patient") -> None:  # noqa: F821
@@ -64,22 +70,36 @@ class FileManager:
         for category in FileCategory:
             (self.base_path / category.value).mkdir(parents=True, exist_ok=True)
 
-    # ── Passwort (für UI-Anzeige & Verschlüsselung) ───────────────────────────
+    # ── Passwort-Auflösung ────────────────────────────────────────────────────
 
-    def patient_pdf_password(self) -> str:
+    def resolve_pdf_password(self) -> str:
         """
-        Gibt das aktive PDF-Passwort zurück.
-        Priorität: custom_pdf_password (DB) → automatisch abgeleitet (HKDF).
-        Im UI anzeigen, damit der User Dateien im Finder öffnen kann.
+        Gibt das aktuell aktive PDF-Passwort zurück.
+        Reihenfolge: global (Settings) → custom (Patient) → abgeleitet (HKDF).
         """
+        global_pw = _get_global_pdf_password()
+        if global_pw:
+            return global_pw
         custom = getattr(self.patient, "custom_pdf_password", None)
         if custom:
             return custom
         return derive_patient_password(self.storage_uuid)
 
     def derived_pdf_password(self) -> str:
-        """Gibt immer das automatisch abgeleitete Passwort zurück (unabhängig von custom)."""
+        """Gibt immer das HKDF-abgeleitete Passwort zurück (unabhängig von Settings)."""
         return derive_patient_password(self.storage_uuid)
+
+    # ── Passwort aus gespeichertem Blob lesen ─────────────────────────────────
+
+    def _store_password(self, password: str) -> str:
+        """Verschlüsselt das Passwort mit dem Patientenschlüssel → base64-String."""
+        encrypted = encrypt_bytes(self.storage_uuid, password.encode("utf-8"))
+        return base64.b64encode(encrypted).decode("ascii")
+
+    def _load_password(self, pdf_password_enc: str) -> str:
+        """Entschlüsselt das gespeicherte Passwort."""
+        encrypted = base64.b64decode(pdf_password_enc)
+        return decrypt_bytes(self.storage_uuid, encrypted).decode("utf-8")
 
     # ── Upload ────────────────────────────────────────────────────────────────
 
@@ -92,11 +112,6 @@ class FileManager:
         user_id: int,
         session_id: int | None = None,
     ) -> PatientFile:
-        """
-        Wählt automatisch die Verschlüsselung anhand des MIME-Types:
-          application/pdf → PDF AES-256 + .pdf-Extension auf Disk
-          alles andere    → AES-256-GCM ohne Extension
-        """
         self.ensure_folders()
 
         file_uuid = str(uuid_lib.uuid4())
@@ -104,46 +119,46 @@ class FileManager:
         is_pdf = (mime_type == "application/pdf")
 
         if is_pdf:
-            password       = self.patient_pdf_password()
-            encrypted      = encrypt_pdf(plaintext, password)
-            disk_filename  = f"{file_uuid}.pdf"
+            password        = self.resolve_pdf_password()
+            encrypted       = encrypt_pdf(plaintext, password)
+            disk_filename   = f"{file_uuid}.pdf"
             encryption_type = EncryptionType.PDF_PASSWORD
+            pdf_password_enc = self._store_password(password)
         else:
-            encrypted      = encrypt_bytes(self.storage_uuid, plaintext)
-            disk_filename  = file_uuid
+            encrypted       = encrypt_bytes(self.storage_uuid, plaintext)
+            disk_filename   = file_uuid
             encryption_type = EncryptionType.AES_GCM
+            pdf_password_enc = None
 
         dest = self.base_path / category.value / disk_filename
         dest.write_bytes(encrypted)
 
         record = PatientFile(
-            patient_id      = self.patient.id,
-            session_id      = session_id,
-            file_uuid       = file_uuid,
-            disk_filename   = disk_filename,
-            original_name   = original_filename,
-            category        = category,
-            mime_type       = mime_type or "application/octet-stream",
-            file_size_bytes = len(plaintext),
-            encryption_type = encryption_type,
+            patient_id       = self.patient.id,
+            session_id       = session_id,
+            file_uuid        = file_uuid,
+            disk_filename    = disk_filename,
+            original_name    = original_filename,
+            category         = category,
+            mime_type        = mime_type or "application/octet-stream",
+            file_size_bytes  = len(plaintext),
+            encryption_type  = encryption_type,
+            pdf_password_enc = pdf_password_enc,
             created_by_user_id = user_id,
         )
         db.add(record)
         db.flush()
 
         app_logger.info(
-            f"Datei-Upload: '{original_filename}' [{encryption_type.value}] → "
-            f"Patient {self.patient.id} / {category.value} / {disk_filename}"
+            f"Upload: '{original_filename}' [{encryption_type.value}] → "
+            f"Patient {self.patient.id} / {category.value}"
         )
         return record
 
-    # ── Download (immer im RAM entschlüsseln) ─────────────────────────────────
+    # ── Download ──────────────────────────────────────────────────────────────
 
     def download(self, file_uuid: str, db: Session) -> tuple[bytes, PatientFile]:
-        """
-        Entschlüsselt die Datei im RAM und gibt Klartextbytes zurück.
-        Wählt automatisch die richtige Methode anhand encryption_type.
-        """
+        """Entschlüsselt im RAM, gibt Klartextbytes zurück. Nie auf Disk schreiben."""
         record = (
             db.query(PatientFile)
             .filter_by(file_uuid=file_uuid, patient_id=self.patient.id, is_deleted=False)
@@ -159,17 +174,19 @@ class FileManager:
         encrypted = encrypted_path.read_bytes()
 
         if record.encryption_type == EncryptionType.PDF_PASSWORD:
-            password  = self.patient_pdf_password()
+            # Gespeichertes Passwort verwenden → robust bei Passwortänderungen
+            if record.pdf_password_enc:
+                password = self._load_password(record.pdf_password_enc)
+            else:
+                password = self.resolve_pdf_password()
             plaintext = decrypt_pdf(encrypted, password)
         else:
             plaintext = decrypt_bytes(self.storage_uuid, encrypted)
 
-        app_logger.info(
-            f"Datei-Download: '{record.original_name}' / Patient {self.patient.id}"
-        )
+        app_logger.info(f"Download: '{record.original_name}' / Patient {self.patient.id}")
         return plaintext, record
 
-    # ── Export: mit Transfer-Passwort (E-Mail / Patientenübergabe) ────────────
+    # ── Export mit Transfer-Passwort (E-Mail / Patientenübergabe) ─────────────
 
     def download_with_transfer_password(
         self,
@@ -178,23 +195,13 @@ class FileManager:
         transfer_password: str,
     ) -> tuple[bytes, PatientFile]:
         """
-        Entschlüsselt die Datei und verschlüsselt sie mit einem Transfer-Passwort.
-        Verwendung: E-Mail-Versand, Patientendaten-Export.
-
-        Für PDFs: Ergebnis ist ein gültiges PDF mit dem transfer_password.
-        Für andere: Ergebnis bleibt AES-GCM-verschlüsselt (anderer Key).
+        Entschlüsselt und verschlüsselt mit einem Transfer-Passwort (z.B. für E-Mail).
         """
-        from app.core.file_crypto import encrypt_pdf_with_transfer_password
-
         plaintext, record = self.download(file_uuid, db)
-
         if record.encryption_type == EncryptionType.PDF_PASSWORD:
             export_bytes = encrypt_pdf_with_transfer_password(plaintext, transfer_password)
         else:
-            # Für Nicht-PDFs: AES-GCM mit transfer_password als Key-Material
-            # (einfache Implementierung: gleicher Blob, anderes Passwort in Metadaten)
-            export_bytes = plaintext  # TODO: spezifisches Exportformat bei Bedarf
-
+            export_bytes = plaintext
         return export_bytes, record
 
     # ── Löschen ──────────────────────────────────────────────────────────────
@@ -216,9 +223,7 @@ class FileManager:
         if encrypted_path.exists():
             _secure_overwrite(encrypted_path)
 
-        app_logger.info(
-            f"Datei gelöscht: '{record.original_name}' / UUID={file_uuid} von User {user_id}"
-        )
+        app_logger.info(f"Gelöscht: '{record.original_name}' von User {user_id}")
 
     # ── Liste ────────────────────────────────────────────────────────────────
 
@@ -236,7 +241,6 @@ class FileManager:
 # ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
 def _secure_overwrite(path: Path) -> None:
-    """Überschreibt mit Nullbytes und löscht danach (kein Wiederherstellungsrisiko)."""
     size = path.stat().st_size
     with open(path, "r+b") as f:
         f.write(b"\x00" * size)

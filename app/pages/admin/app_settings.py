@@ -41,6 +41,8 @@ def app_settings_page() -> None:
         current_upload_misc = (
                 setting.upload_path_misc or "./data/uploads/misc"
         )
+        # PDF-PASSWORT
+        current_pdf_password = setting.pdf_password or ""
 
     with ui.card().classes("w-full max-w-3xl p-8 shadow-sm border border-slate-200"):
 
@@ -107,6 +109,25 @@ def app_settings_page() -> None:
                 ui.button(
                     icon="folder", on_click=lambda: pick_dir(misc_uploads_input)
                 ).props("flat round dense")
+            ui.separator().props("dense")
+
+            ui.label("PDF-Dateiverschlüsselung").classes("font-medium text-slate-700")
+            ui.label(
+                "Dieses Passwort wird für alle neu erstellten Patienten-PDFs verwendet "
+                "(Rechnungen, Quittungen, Stornos). "
+                "Leer lassen = automatisch pro Patient abgeleitet."
+            ).classes("text-xs text-slate-500 mb-1")
+            ui.label(
+                "⚠️  Passwortänderung gilt nur für neue Dateien. "
+                "Bestehende Dateien behalten ihr ursprüngliches Passwort."
+            ).classes("text-xs text-amber-700 bg-amber-50 p-2 rounded mb-2")
+            pdf_password_input = (
+                ui.input("Globales PDF-Passwort", value=current_pdf_password,
+                         password=True, password_toggle_button=True)
+                .classes("w-full max-w-sm")
+                .props("outlined dense")
+            )
+
             ui.separator().props("dense")
             ui.label("Backup-Konfiguration").classes("font-medium text-slate-700")
             backup_input = (
@@ -191,6 +212,7 @@ def app_settings_page() -> None:
                 s.upload_path_templates = template_input.value
                 s.upload_path_patient_documents = patient_documents_input.value
                 s.upload_path_misc = misc_uploads_input.value
+                s.pdf_password = pdf_password_input.value.strip() or None
                 s.backup_path = backup_input.value
                 s.backup_on_close = backup_on_close_toggle.value
                 s.backup_schedule = schedule_select.value

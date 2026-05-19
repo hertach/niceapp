@@ -29,3 +29,5 @@ class AppSetting(Base):
     upload_path_templates = Column(String(255), default="./data/uploads/templates")
     upload_path_patient_documents = Column(String(255), default="./data/uploads/client_files")
     upload_path_misc = Column(String(255), default="./data/uploads/misc")
+    # ── PDF-VERSCHLÜSSELUNG ──
+    pdf_password = Column(String(100), nullable=True)   # Globales Passwort für alle Patienten-PDFs

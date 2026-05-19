@@ -40,6 +40,9 @@ class PatientFile(Base):
         nullable=False,
         default=EncryptionType.PDF_PASSWORD,
     )
+    # Das für diese Datei verwendete PDF-Passwort, AES-verschlüsselt gespeichert.
+    # Damit funktioniert die Entschlüsselung auch nach Passwortänderungen in den Settings.
+    pdf_password_enc = Column(String(512), nullable=True)
 
     # Audit-Felder
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)

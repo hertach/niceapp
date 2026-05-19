@@ -29,7 +29,7 @@ def upgrade() -> None:
                 "encryption_type",
                 sa.String(length=20),
                 nullable=False,
-                server_default="pdf_password",
+                server_default="PDF_PASSWORD",
             )
         )
 

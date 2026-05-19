@@ -11,7 +11,9 @@ from datetime import date, datetime
 from nicegui import app as nicegui_app
 from nicegui import ui
 from sqlalchemy.orm import joinedload
-
+from app.core.download_tokens import create_download_token
+from app.core.file_manager import FileManager, _get_global_pdf_password
+from app.models.patient_file import FileCategory, PatientFile
 from app.components.document_dialog import open_document_dialog
 from app.core.accounting_logic import (
     book_patient_session,
@@ -68,9 +70,6 @@ except Exception as e:
 # ── DATEIEN-TAB ──────────────────────────────────────────────────────────────
 
 def _render_dateien_tab(patient_id: int) -> None:
-    """Passwort-Karte im Dateien-Tab: anzeigen, kopieren, eigenes setzen."""
-    from app.core.file_manager import FileManager
-
     if not patient_id:
         ui.label("Bitte zuerst den Patienten speichern.").classes("text-slate-400")
         return
@@ -79,109 +78,120 @@ def _render_dateien_tab(patient_id: int) -> None:
         patient = db.query(Patient).filter_by(id=patient_id).first()
         if not patient:
             return
-        fm           = FileManager(patient)
-        active_pw    = fm.patient_pdf_password()
-        derived_pw   = fm.derived_pdf_password()
-        has_custom   = bool(patient.custom_pdf_password)
+        fm         = FileManager(patient)
+        active_pw  = fm.resolve_pdf_password()
+        global_pw  = _get_global_pdf_password()
+        all_files  = fm.list_files(db)
 
-    pw_state = {"visible": False, "value": patient.custom_pdf_password or ""}
+    # Dateien nach Kategorie gruppieren
+    by_category: dict[FileCategory, list] = {c: [] for c in FileCategory}
+    for f in all_files:
+        by_category[f.category].append(f)
 
-    with ui.card().classes("w-full max-w-3xl p-6 shadow-sm mb-6"):
-        with ui.row().classes("w-full items-center justify-between mb-1"):
-            ui.label("PDF-Dateizugriff").classes("text-[18px] font-medium text-[#1e3a5f]")
-            # Farbiger Badge: automatisch oder eigenes
-            badge_text = "Eigenes Passwort" if has_custom else "Automatisch abgeleitet"
-            badge_cls  = (
-                "text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800"
-                if has_custom else
-                "text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800"
+    # ── File-Explorer ─────────────────────────────────────────────────────────
+    _CATEGORY_LABELS = {
+        FileCategory.RECHNUNG: ("Rechnungen",  "receipt_long"),
+        FileCategory.STORNO:   ("Stornos",     "cancel"),
+        FileCategory.QUITTUNG: ("Quittungen",  "fact_check"),
+        FileCategory.UPLOAD:   ("Uploads",     "upload_file"),
+    }
+
+    def _fmt_size(b: int | None) -> str:
+        if not b:
+            return "—"
+        if b < 1024:
+            return f"{b} B"
+        if b < 1024 ** 2:
+            return f"{b/1024:.1f} KB"
+        return f"{b/1024**2:.1f} MB"
+
+    def _open_file(file_uuid: str):
+        user_id = nicegui_app.storage.user.get("user_id", 0)
+        token   = create_download_token(file_uuid, user_id)
+        ui.navigate.to(f"/files/download/{file_uuid}?token={token}", new_tab=True)
+
+    def _confirm_delete(file_uuid: str, filename: str):
+        with ui.dialog() as dlg, ui.card().classes("p-6 min-w-[340px]"):
+            ui.label("Datei löschen").classes("text-[16px] font-semibold text-red-700 mb-2")
+            ui.label(f'„{filename}" wirklich löschen?').classes("text-sm text-slate-600 mb-4")
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Abbrechen", on_click=dlg.close).props('flat text-color="grey"')
+                def do_delete(uuid=file_uuid):
+                    user_id = nicegui_app.storage.user.get("user_id", 0)
+                    with get_session() as db2:
+                        p2 = db2.query(Patient).filter_by(id=patient_id).first()
+                        FileManager(p2).delete(uuid, db2, user_id)
+                        db2.commit()
+                    dlg.close()
+                    ui.notify("Datei gelöscht.", type="positive")
+                    main_content.refresh()
+                ui.button("Löschen", icon="delete", on_click=do_delete).props(
+                    "unelevated"
+                ).classes("bg-red-600 text-white")
+        dlg.open()
+
+    with ui.column().classes("w-full max-w-4xl gap-3"):
+        for category, (label, icon) in _CATEGORY_LABELS.items():
+            files = by_category[category]
+            count = len(files)
+
+            header_cls = (
+                "text-[14px] font-semibold text-[#1e3a5f]"
+                if count > 0 else
+                "text-[14px] font-semibold text-slate-400"
             )
-            ui.label(badge_text).classes(badge_cls)
 
-        ui.label(
-            "Mit diesem Passwort können verschlüsselte PDF-Dateien des Patienten "
-            "direkt im Finder / PDF-Viewer geöffnet werden."
-        ).classes("text-sm text-slate-500 mb-4")
+            with ui.expansion(value=count > 0).classes("w-full shadow-sm rounded") as exp:
+                with exp.add_slot("header"):
+                    with ui.row().classes("items-center gap-2 w-full"):
+                        ui.icon(icon, size="xs").classes(
+                            "text-[#0078d4]" if count > 0 else "text-slate-300"
+                        )
+                        ui.label(label).classes(header_cls)
+                        ui.badge(str(count), color="primary" if count > 0 else "grey"
+                                 ).classes("ml-1")
 
-        # ── Aktives Passwort (read-only, mit Kopieren) ───────────────────────
-        with ui.row().classes("w-full items-center gap-2 mb-4"):
-            pw_display = (
-                ui.input("Aktives Passwort", value=active_pw)
-                .props("outlined dense readonly")
-                .classes("flex-1 font-mono")
-            )
-            pw_display.props("type=password")
+                if not files:
+                    ui.label("Keine Dateien vorhanden.").classes(
+                        "text-xs text-slate-400 py-2 px-4"
+                    )
+                else:
+                    with ui.column().classes("w-full gap-0"):
+                        for i, f in enumerate(files):
+                            row_cls = "w-full px-4 py-2 " + (
+                                "bg-slate-50" if i % 2 == 0 else "bg-white"
+                            )
+                            with ui.row().classes(row_cls + " items-center gap-2"):
+                                # Icon je nach Typ
+                                f_icon = "picture_as_pdf" if (
+                                    f.mime_type == "application/pdf"
+                                ) else "insert_drive_file"
+                                ui.icon(f_icon, size="xs").classes("text-red-400 shrink-0")
 
-            def toggle_pw_visibility():
-                pw_state["visible"] = not pw_state["visible"]
-                pw_display.props(
-                    "type=text" if pw_state["visible"] else "type=password"
-                )
-                eye_btn.props(
-                    'icon=visibility_off' if pw_state["visible"] else 'icon=visibility'
-                )
+                                # Name + Datum
+                                with ui.column().classes("flex-1 gap-0 min-w-0"):
+                                    ui.label(f.original_name).classes(
+                                        "text-sm font-medium text-slate-800 truncate"
+                                    )
+                                    date_str = f.created_at.strftime("%d.%m.%Y %H:%M") if f.created_at else "—"
+                                    ui.label(
+                                        f"{date_str}  ·  {_fmt_size(f.file_size_bytes)}"
+                                    ).classes("text-xs text-slate-400")
 
-            eye_btn = ui.button(icon="visibility", on_click=toggle_pw_visibility).props(
-                "flat round dense"
-            ).classes("text-slate-500")
+                                # Aktionen
+                                ui.button(
+                                    icon="open_in_new",
+                                    on_click=lambda uuid=f.file_uuid: _open_file(uuid),
+                                ).props("flat round dense").classes(
+                                    "text-[#0078d4]"
+                                ).tooltip("Öffnen / Herunterladen")
 
-            def copy_pw():
-                ui.run_javascript(
-                    f"navigator.clipboard.writeText('{active_pw}')"
-                )
-                ui.notify("Passwort kopiert!", type="positive", timeout=2000)
-
-            ui.button(icon="content_copy", on_click=copy_pw).props(
-                "flat round dense"
-            ).classes("text-slate-500").tooltip("Passwort kopieren")
-
-        # ── Automatisch abgeleitetes Passwort (Info) ─────────────────────────
-        if has_custom:
-            with ui.row().classes("items-center gap-2 mb-4"):
-                ui.icon("info", size="sm").classes("text-slate-400")
-                ui.label(
-                    f"Abgeleitetes Passwort (Original): {derived_pw}"
-                ).classes("text-xs text-slate-400 font-mono")
-
-        ui.separator().classes("mb-4")
-
-        # ── Eigenes Passwort setzen ───────────────────────────────────────────
-        ui.label("Eigenes Passwort setzen").classes("font-medium text-slate-700 mb-2")
-        ui.label(
-            "⚠️  Achtung: Ein neues Passwort gilt nur für zukünftige Dateien. "
-            "Bereits gespeicherte Dateien bleiben mit dem alten Passwort verschlüsselt."
-        ).classes("text-xs text-amber-700 bg-amber-50 p-2 rounded mb-3")
-
-        custom_input = (
-            ui.input("Eigenes Passwort (leer = automatisch)", value=pw_state["value"])
-            .props("outlined dense")
-            .classes("w-full font-mono mb-3")
-        )
-
-        def save_custom_password():
-            new_pw = custom_input.value.strip()
-            with get_session() as db2:
-                p = db2.query(Patient).filter_by(id=patient_id).first()
-                p.custom_pdf_password = new_pw if new_pw else None
-                db2.commit()
-            if new_pw:
-                ui.notify(f"Eigenes Passwort gespeichert: {new_pw}", type="positive")
-            else:
-                ui.notify("Zurückgesetzt auf automatisch abgeleitetes Passwort.", type="info")
-            main_content.refresh()  # Tab neu laden
-
-        def reset_to_derived():
-            custom_input.set_value("")
-            save_custom_password()
-
-        with ui.row().classes("gap-2"):
-            ui.button("Speichern", icon="save", on_click=save_custom_password).props(
-                "unelevated"
-            ).classes("bg-[#0078d4] text-white")
-            if has_custom:
-                ui.button(
-                    "Zurücksetzen (automatisch)", icon="refresh", on_click=reset_to_derived
-                ).props("flat").classes("text-slate-500")
+                                # ui.button(
+                                #     icon="delete_outline",
+                                #     on_click=lambda uuid=f.file_uuid, name=f.original_name: _confirm_delete(uuid, name),
+                                # ).props("flat round dense").classes(
+                                #     "text-red-400"
+                                # ).tooltip("Löschen")
 
 
 # ── STATUS-KONSTANTEN ────────────────────────────────────────────────────────
