@@ -12,6 +12,22 @@ from app.models.app_setting import AppSetting
 from app.models.company_setting import DocumentTemplate
 
 
+# Basis-Typen, die immer verfügbar sind (auch ohne bestehende Vorlagen)
+_DEFAULT_DOC_TYPES = ["Rechnung", "Quittung", "Stornorechnung", "Begleitbrief", "Mahnung"]
+
+
+def _load_doc_types() -> list[str]:
+    """Lädt alle bekannten Dokumenttypen: DB-Typen ∪ Standardliste, alphabetisch sortiert."""
+    with get_session() as session:
+        db_types = [
+            row[0]
+            for row in session.query(DocumentTemplate.doc_type).distinct().all()
+            if row[0]
+        ]
+    combined = sorted(set(db_types) | set(_DEFAULT_DOC_TYPES))
+    return combined
+
+
 def template_settings_page() -> None:
     ui.label("Vorlagenverwaltung").classes(
         "text-[24px] font-semibold text-[#1e3a5f] mb-4"
@@ -24,6 +40,8 @@ def template_settings_page() -> None:
             if app_settings and app_settings.upload_path_templates
             else "./data/uploads/templates"
         )
+
+    doc_types = _load_doc_types()
 
     os.makedirs(TEMPLATE_DIR, exist_ok=True)
 
@@ -73,7 +91,7 @@ def template_settings_page() -> None:
             "w-full mb-2"
         ).props("outlined dense")
         ui.select(
-            ["Rechnung", "Quittung","Stornorechnung", "Begleitbrief", "Mahnung"], label="Zuweisungstyp"
+            doc_types, label="Zuweisungstyp"
         ).bind_value(edit_state, "doc_type").classes("w-full mb-2").props(
             "outlined dense"
         )
@@ -306,7 +324,7 @@ def template_settings_page() -> None:
                 with ui.row().classes("items-center w-full gap-4"):
                     selected_type = (
                         ui.select(
-                            ["Rechnung", "Quittung","Stornorechnung", "Begleitbrief", "Mahnung"],
+                            doc_types,
                             label="Zuweisung",
                         )
                         .classes("w-40")

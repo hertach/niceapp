@@ -31,6 +31,7 @@ class PatientFile(Base):
     disk_filename   = Column(String(41), nullable=True)    # uuid oder uuid.pdf
     original_name   = Column(String(255), nullable=False)
     category        = Column(Enum(FileCategory), nullable=False)
+    doc_type        = Column(String(50), nullable=True)    # z.B. 'Rechnung', 'Begleitbrief', None=manueller Upload
     mime_type       = Column(String(100))
     file_size_bytes = Column(Integer)
 

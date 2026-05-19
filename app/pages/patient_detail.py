@@ -16,6 +16,7 @@ from nicegui import ui
 from sqlalchemy.orm import joinedload
 from app.core.download_tokens import create_download_token
 from app.core.file_manager import FileManager, _get_global_pdf_password
+from app.models.company_setting import DocumentTemplate
 from app.models.patient_file import FileCategory, PatientFile
 from app.components.document_dialog import open_document_dialog
 from app.components.inputs import new_button
@@ -73,12 +74,17 @@ except Exception as e:
 
 # ── DATEIEN-TAB ──────────────────────────────────────────────────────────────
 
-_CATEGORY_LABELS = {
-    FileCategory.RECHNUNG: ("Rechnungen",  "receipt_long"),
-    FileCategory.STORNO:   ("Stornos",     "cancel"),
-    FileCategory.QUITTUNG: ("Quittungen",  "fact_check"),
-    FileCategory.UPLOAD:   ("Uploads",     "upload_file"),
+# Icon je Dokumenttyp (Fallback: description)
+_DOC_TYPE_ICONS: dict[str, str] = {
+    "Rechnung":       "receipt_long",
+    "Quittung":       "fact_check",
+    "Stornorechnung": "cancel",
+    "Begleitbrief":   "mail",
+    "Mahnung":        "warning",
 }
+_UPLOAD_ICON    = "upload_file"
+_UPLOAD_LABEL   = "Uploads"
+_DEFAULT_ICON   = "description"
 
 
 def _render_dateien_tab(patient_id: int) -> None:
@@ -97,10 +103,27 @@ def _render_dateien_tab(patient_id: int) -> None:
             fm          = FileManager(patient)
             folder_path = str(fm.base_path)
             all_files   = fm.list_files(db)
+            # Alle bekannten Dokumenttypen aus der Vorlagenverwaltung
+            known_doc_types: list[str] = [
+                row[0]
+                for row in db.query(DocumentTemplate.doc_type).distinct().all()
+                if row[0]
+            ]
 
-        by_category: dict = {c: [] for c in FileCategory}
+        # ── Gruppierung nach doc_type ─────────────────────────────────────
+        # Sektionen: Vorlagen-Typen aus DB ∪ doc_types in vorhandenen Dateien ∪ Standardliste
+        _DEFAULT_DOC_TYPES = ["Rechnung", "Quittung", "Stornorechnung", "Begleitbrief", "Mahnung"]
+        file_doc_types = {f.doc_type for f in all_files if f.doc_type}
+        ordered_types: list[str] = sorted(
+            set(known_doc_types) | file_doc_types | set(_DEFAULT_DOC_TYPES)
+        )
+
+        by_doc_type: dict[str, list] = {t: [] for t in ordered_types}
+        by_doc_type[_UPLOAD_LABEL] = []
+
         for f in all_files:
-            by_category[f.category].append(f)
+            key = f.doc_type if (f.doc_type and f.doc_type in by_doc_type) else _UPLOAD_LABEL
+            by_doc_type[key].append(f)
 
         # ── Rolle prüfen ──────────────────────────────────────────────────
         is_admin = nicegui_app.storage.user.get("role", "") == "admin"
@@ -186,10 +209,10 @@ def _render_dateien_tab(patient_id: int) -> None:
                     ui.label("Dateien").classes(
                         "text-[20px] font-medium text-[#1e3a5f]"
                     )
-            # ── Linke Spalte: Datei-Kategorien ───────────────────────────
+            # ── Linke Spalte: Datei-Typen (dynamisch aus DB) ─────────────
             with ui.column().classes("flex-1 gap-3 min-w-0"):
-                for category, (label, icon) in _CATEGORY_LABELS.items():
-                    files     = by_category[category]
+                for label, files in by_doc_type.items():
+                    icon      = _DOC_TYPE_ICONS.get(label, _UPLOAD_ICON if label == _UPLOAD_LABEL else _DEFAULT_ICON)
                     count     = len(files)
                     has_files = count > 0
 

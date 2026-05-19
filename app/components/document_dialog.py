@@ -89,6 +89,7 @@ def open_document_dialog(
                     db=db,
                     user_id=user_id,
                     session_id=session_id,
+                    doc_type=doc_type,
                 )
                 db.commit()
                 # file_uuid VOR dem Session-Close sichern —

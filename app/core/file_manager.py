@@ -111,6 +111,7 @@ class FileManager:
         db: Session,
         user_id: int,
         session_id: int | None = None,
+        doc_type: str | None = None,
     ) -> PatientFile:
         self.ensure_folders()
 
@@ -140,6 +141,7 @@ class FileManager:
             disk_filename    = disk_filename,
             original_name    = original_filename,
             category         = category,
+            doc_type         = doc_type,
             mime_type        = mime_type or "application/octet-stream",
             file_size_bytes  = len(plaintext),
             encryption_type  = encryption_type,
