@@ -1307,6 +1307,10 @@ def patient_detail_page(navigate) -> None:
             "text-[24px] font-semibold text-[#1e3a5f]"
         )
         ui.space()
+        if patient_id:
+            ui.button("Neue Sitzung", icon="add", on_click=open_session).props(
+                "outline dense"
+            ).classes("text-[#0078d4]")
         ui.button("Speichern", icon="save", on_click=save_basic).props("unelevated").classes(
             "bg-[#0078d4] text-white"
         )
@@ -1557,9 +1561,9 @@ def patient_detail_page(navigate) -> None:
                                         ui.label(f"{sv}: {cnt[sv]}").classes(
                                             f"text-xs font-semibold px-2 py-0.5 rounded-full {badge_cls}"
                                         )
-                            ui.button(
-                                "Neue Sitzung", icon="add", on_click=open_session
-                            ).props("unelevated").classes("bg-[#0078d4] text-white self-start")
+                            # ui.button(
+                            #     "Neue Sitzung", icon="add", on_click=open_session
+                            # ).props("unelevated").classes("bg-[#0078d4] text-white self-start")
 
                         # ── Filter-Leiste ─────────────────────────────────
                         with ui.row().classes("gap-2 mb-4 flex-wrap items-center"):
